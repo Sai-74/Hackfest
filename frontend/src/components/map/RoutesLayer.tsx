@@ -16,9 +16,9 @@ import {
 import type { RouteOption } from "@/types/routes";
 
 const CHEVRON_SPACING_M = 6;
-const PULSE_CYCLE_MS = 7000;
+const PULSE_CYCLE_MS = 1500;
 const PULSE_RADIUS_M = 28;
-const PULSE_FRAME_MS = 50;
+const PULSE_FRAME_MS = 10;
 const CHEVRON_IMAGE_ID = "coolroute-chevron";
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;
@@ -80,6 +80,18 @@ function chevronFeatures(route: RouteOption, index: LineIndex) {
     });
   }
   return { type: "FeatureCollection" as const, features };
+}
+
+function hasSameGeometry(
+  a: RouteOption["geometry"],
+  b: RouteOption["geometry"],
+): boolean {
+  if (a.length !== b.length) return false;
+
+  return a.every(
+    ([lon, lat], i) =>
+      Math.abs(lon - b[i][0]) < 1e-7 && Math.abs(lat - b[i][1]) < 1e-7,
+  );
 }
 
 export function RoutesLayer() {
@@ -182,23 +194,47 @@ export function RoutesLayer() {
 
   useEffect(() => {
     if (!map || !weighted || !fastest) return;
-    (map.getSource(FASTEST_SOURCE_ID) as maplibregl.GeoJSONSource)?.setData({
+    const fastestOverlapsWeighted = hasSameGeometry(
+      fastest.geometry,
+      weighted.geometry,
+    );
+    const fastestSource = map.getSource(FASTEST_SOURCE_ID) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+    fastestSource?.setData(
+      fastestOverlapsWeighted
+        ? EMPTY_FC
+        : {
+            type: "Feature",
+            properties: {},
+            geometry: {
+              type: "LineString",
+              coordinates: fastest.geometry,
+            },
+          },
+    );
+
+    (
+      map.getSource(WEIGHTED_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
+    )?.setData({
       type: "Feature",
       properties: {},
-      geometry: { type: "LineString", coordinates: fastest.geometry },
+      geometry: {
+        type: "LineString",
+        coordinates: weighted.geometry,
+      },
     });
-    (map.getSource(WEIGHTED_SOURCE_ID) as maplibregl.GeoJSONSource)?.setData({
-      type: "Feature",
-      properties: {},
-      geometry: { type: "LineString", coordinates: weighted.geometry },
-    });
+
     if (!fitted.current) {
       fitted.current = true;
       const bounds = new maplibregl.LngLatBounds(
         weighted.geometry[0],
         weighted.geometry[0],
       );
-      for (const c of weighted.geometry) bounds.extend(c);
+      for (const c of weighted.geometry) {
+        bounds.extend(c);
+      }
+
       map.fitBounds(bounds, {
         padding: { top: 90, bottom: 150, left: 60, right: 60 },
         pitch: INITIAL_CAMERA.pitch,
