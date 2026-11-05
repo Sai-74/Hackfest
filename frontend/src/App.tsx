@@ -4,6 +4,7 @@ import { RoutesLayer } from "@/components/map/RoutesLayer";
 import { MapViewport } from "@/components/map/MapViewport";
 import { CampusBuildingCellsLayer } from "./components/map/CampusBuildingCellsLayer";
 import { RoadNetworkLayer } from "./components/map/RoadNetworkLayer";
+import { RouteWaypointsLayer } from "./components/map/RouteWaypointsLayer";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
           <CampusBuildingCellsLayer />
           <RoadNetworkLayer />
           <RoutesLayer />
+          <RouteWaypointsLayer />
         </MapViewport>
         <RouteLegend />
       </main>
