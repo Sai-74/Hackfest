@@ -3,6 +3,7 @@ import { RouteLegend } from "@/components/map/RouteLegend";
 import { RoutesLayer } from "@/components/map/RoutesLayer";
 import { MapViewport } from "@/components/map/MapViewport";
 import { CampusBuildingCellsLayer } from "./components/map/CampusBuildingCellsLayer";
+import { RoadNetworkLayer } from "./components/map/RoadNetworkLayer";
 
 export default function App() {
   return (
@@ -11,6 +12,7 @@ export default function App() {
         <MapViewport>
           <BuildingsLayer />
           <CampusBuildingCellsLayer />
+          <RoadNetworkLayer />
           <RoutesLayer />
         </MapViewport>
         <RouteLegend />
