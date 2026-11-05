@@ -1,6 +1,8 @@
 import { useRoutes } from "@/features/routes/useRoutes";
+import { useRouteInputs } from "@/features/routes/route-input-context";
 import { heatBandFor } from "@/features/heat/heatScale";
-import type { RouteKind, RouteOption } from "@/types/routes";
+
+import type { LonLat, RouteKind, RouteOption } from "@/types/routes";
 
 interface Props {
   selectedRouteKind: RouteKind;
@@ -32,6 +34,10 @@ function formatDistance(meters: number): string {
 
 function formatDuration(minutes: number): string {
   return `${Math.max(1, Math.round(minutes))} min walk`;
+}
+
+function formatCoordinate(coordinate: LonLat): string {
+  return `${coordinate[1].toFixed(5)}, ${coordinate[0].toFixed(5)}`;
 }
 
 function RouteOptionCard({
@@ -104,51 +110,158 @@ export function RouteSelectionPanel({
   selectedRouteKind,
   onSelectRoute,
 }: Props) {
-  const { data } = useRoutes();
+  const {
+    origin,
+    destination,
+    selectionMode,
+    setSelectionMode,
+    swapEndpoints,
+    resetEndpoints,
+  } = useRouteInputs();
+
+  const { data, isLoading, isFetching, isError, error, refetch } = useRoutes();
 
   const fastest = data?.find((route) => route.kind === "fastest");
+
   const recommended = data?.find((route) => route.kind === "weighted");
 
-  if (!fastest || !recommended) return null;
+  function pickButton(mode: "origin" | "destination", label: string) {
+    const active = selectionMode === mode;
+
+    return (
+      <button
+        type="button"
+        onClick={() => setSelectionMode(active ? null : mode)}
+        className={[
+          "mt-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors",
+          active
+            ? "bg-primary text-primary-foreground"
+            : "bg-secondary text-secondary-foreground hover:bg-primary/10",
+        ].join(" ")}
+      >
+        {active ? "Cancel" : label}
+      </button>
+    );
+  }
 
   return (
     <section className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-[min(94vw,680px)] -translate-x-1/2 rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
         <div>
           <p className="text-sm font-bold text-card-foreground">
-            Choose your route
+            Plan your route
           </p>
           <p className="text-[11px] text-muted-foreground">
-            Campus walking routes
+            Choose your campus start and destination
           </p>
         </div>
 
-        <span className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-secondary-foreground">
-          SHADE-AWARE
-        </span>
+        <button
+          type="button"
+          onClick={resetEndpoints}
+          className="text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+        >
+          Reset
+        </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <RouteOptionCard
-          route={fastest}
-          selected={selectedRouteKind === "fastest"}
-          onSelect={() => onSelectRoute("fastest")}
-          title="Fastest"
-          subtitle="Shortest walking distance"
-        />
+      {/* Origin and destination controls */}
+      <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            <span className="mr-1 text-emerald-600">●</span>
+            Origin
+          </p>
 
-        <RouteOptionCard
-          route={recommended}
-          selected={selectedRouteKind === "weighted"}
-          onSelect={() => onSelectRoute("weighted")}
-          title="Recommended"
-          subtitle="Lower heat exposure"
-        />
+          <p className="mt-1 truncate text-xs font-semibold tabular-nums">
+            {formatCoordinate(origin)}
+          </p>
+
+          {pickButton("origin", "Pick on map")}
+        </div>
+
+        <button
+          type="button"
+          onClick={swapEndpoints}
+          title="Swap origin and destination"
+          aria-label="Swap origin and destination"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-lg text-foreground transition-colors hover:bg-secondary"
+        >
+          ⇄
+        </button>
+
+        <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            <span className="mr-1 text-amber-500">●</span>
+            Destination
+          </p>
+
+          <p className="mt-1 truncate text-xs font-semibold tabular-nums">
+            {formatCoordinate(destination)}
+          </p>
+
+          {pickButton("destination", "Pick on map")}
+        </div>
       </div>
 
-      <p className="mt-2 px-1 text-[10px] text-muted-foreground">
-        Environmental scores are synthetic demo estimates.
-      </p>
+      {isFetching && (
+        <p className="mb-2 px-1 text-[11px] text-muted-foreground">
+          Recalculating campus routes…
+        </p>
+      )}
+
+      {isError && (
+        <div
+          role="alert"
+          className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3"
+        >
+          <p className="text-xs text-destructive">
+            {error instanceof Error
+              ? error.message
+              : "Could not calculate routes."}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="shrink-0 text-xs font-semibold text-destructive underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {isLoading && !data && (
+        <div className="rounded-xl bg-secondary/60 p-4 text-center text-xs text-muted-foreground">
+          Calculating routes…
+        </div>
+      )}
+
+      {fastest && recommended && (
+        <>
+          <div className="grid grid-cols-2 gap-2">
+            <RouteOptionCard
+              route={fastest}
+              selected={selectedRouteKind === "fastest"}
+              onSelect={() => onSelectRoute("fastest")}
+              title="Fastest"
+              subtitle="Shortest walking distance"
+            />
+
+            <RouteOptionCard
+              route={recommended}
+              selected={selectedRouteKind === "weighted"}
+              onSelect={() => onSelectRoute("weighted")}
+              title="Recommended"
+              subtitle="Alternative, shade-aware route"
+            />
+          </div>
+
+          <p className="mt-2 px-1 text-[10px] text-muted-foreground">
+            Environmental scores are synthetic demo estimates.
+          </p>
+        </>
+      )}
     </section>
   );
 }

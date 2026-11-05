@@ -1,4 +1,3 @@
-import { DEMO_DESTINATION, DEMO_ORIGIN } from "@/lib/map/config";
 import { buildLineIndex } from "@/lib/map/lineMath";
 import type { LonLat, RouteOption, RouteKind } from "@/types/routes";
 import { DEMO_TREES } from "@/services/mock/demoTrees";
@@ -34,6 +33,46 @@ interface GraphEdge {
   to: number;
   length: number;
   coordinates: LonLat[];
+}
+
+interface CampusGraph {
+  nodes: NodeFeature[];
+  graph: Map<number, GraphEdge[]>;
+}
+
+let campusGraphPromise: Promise<CampusGraph> | null = null;
+
+function loadCampusGraph(): Promise<CampusGraph> {
+  if (!campusGraphPromise) {
+    campusGraphPromise = (async () => {
+      const base = import.meta.env.BASE_URL;
+
+      const [nodesResponse, edgesResponse] = await Promise.all([
+        fetch(`${base}data/ravenshaw_nodes.geojson`),
+        fetch(`${base}data/ravenshaw_edges.geojson`),
+      ]);
+
+      if (!nodesResponse.ok || !edgesResponse.ok) {
+        throw new Error("Could not load the campus road network.");
+      }
+
+      const nodes =
+        (await nodesResponse.json()) as FeatureCollection<NodeFeature>;
+
+      const edges =
+        (await edgesResponse.json()) as FeatureCollection<EdgeFeature>;
+
+      return {
+        nodes: nodes.features,
+        graph: buildGraph(nodes.features, edges.features),
+      };
+    })().catch((error: unknown) => {
+      campusGraphPromise = null;
+      throw error;
+    });
+  }
+
+  return campusGraphPromise;
 }
 
 interface PreviousEdge {
@@ -259,37 +298,37 @@ function buildRouteGeometry(
   return geometry;
 }
 
-export async function mockRouteOptions(): Promise<RouteOption[]> {
-  const base = import.meta.env.BASE_URL;
-
-  const [nodesResponse, edgesResponse] = await Promise.all([
-    fetch(`${base}data/ravenshaw_nodes.geojson`),
-    fetch(`${base}data/ravenshaw_edges.geojson`),
-  ]);
-
-  if (!nodesResponse.ok || !edgesResponse.ok) {
-    throw new Error("Could not load the campus road network.");
+export async function mockRouteOptions(
+  origin: LonLat,
+  destination: LonLat,
+): Promise<RouteOption[]> {
+  if (distanceMeters(origin, destination) < 1) {
+    throw new Error("Origin and destination must be at least 1 metre apart.");
   }
 
-  const nodes = (await nodesResponse.json()) as FeatureCollection<NodeFeature>;
-  const edges = (await edgesResponse.json()) as FeatureCollection<EdgeFeature>;
+  const { nodes, graph } = await loadCampusGraph();
 
-  const originNode = nearestNode(DEMO_ORIGIN, nodes.features);
-  const destinationNode = nearestNode(DEMO_DESTINATION, nodes.features);
-
-  const graph = buildGraph(nodes.features, edges.features);
+  const originNode = nearestNode(origin, nodes);
+  const destinationNode = nearestNode(destination, nodes);
 
   const start = originNode.properties.osmid;
-  const destination = destinationNode.properties.osmid;
+  const end = destinationNode.properties.osmid;
 
-  // Fastest: shortest-distance route.
-  const fastestPath = shortestPath(graph, start, destination);
+  // Fastest: shortest distance through the road graph.
+  const fastestPath = shortestPath(graph, start, end);
 
-  // Recommended: alternative route that avoids the direct edge.
-  const recommendedPath = shortestPath(graph, start, destination, true);
+  // Recommended: alternative path for the demo.
+  // Fall back to the fastest path if no alternative exists.
+  let recommendedPath: GraphEdge[];
+
+  try {
+    recommendedPath = shortestPath(graph, start, end, true);
+  } catch {
+    recommendedPath = fastestPath;
+  }
 
   function createRoute(kind: RouteKind, path: GraphEdge[]): RouteOption {
-    const geometry = buildRouteGeometry(DEMO_ORIGIN, DEMO_DESTINATION, path);
+    const geometry = buildRouteGeometry(origin, destination, path);
 
     const index = buildLineIndex(geometry);
 

@@ -14,6 +14,7 @@ import {
   WEIGHTED_SOURCE_ID,
 } from "@/lib/map/layers";
 import type { RouteOption, RouteKind } from "@/types/routes";
+import { useRouteInputs } from "@/features/routes/route-input-context";
 
 const CHEVRON_SPACING_PX = 22;
 const CHEVRON_SAMPLE_STEP_M = 0.5;
@@ -165,8 +166,9 @@ export function RoutesLayer({
 }) {
   const map = useMap();
   const { data } = useRoutes();
-  const fitted = useRef(false);
-
+  const fittedEndpoints = useRef<string | null>(null);
+  const { origin, destination } = useRouteInputs();
+  const endpointKey = `${origin[0]},${origin[1]}|${destination[0]},${destination[1]}`;
   const selectedRoute =
     data?.find((route) => route.kind === selectedRouteKind) ?? null;
   const alternateRoute =
@@ -300,27 +302,38 @@ export function RoutesLayer({
       },
     });
 
-    if (!fitted.current) {
-      fitted.current = true;
+    if (fittedEndpoints.current !== endpointKey) {
+      fittedEndpoints.current = endpointKey;
+
+      const firstCoordinate = selectedRoute.geometry[0];
 
       const bounds = new maplibregl.LngLatBounds(
-        selectedRoute.geometry[0],
-        selectedRoute.geometry[0],
+        firstCoordinate,
+        firstCoordinate,
       );
 
-      for (const coordinate of selectedRoute.geometry) {
-        bounds.extend(coordinate);
+      // Fit both options so either can be selected without
+      // the alternative disappearing outside the viewport.
+      for (const route of [selectedRoute, alternateRoute]) {
+        for (const coordinate of route.geometry) {
+          bounds.extend(coordinate);
+        }
       }
 
       map.fitBounds(bounds, {
-        padding: { top: 90, bottom: 190, left: 60, right: 60 },
+        padding: {
+          top: 90,
+          bottom: 220,
+          left: 60,
+          right: 60,
+        },
         pitch: INITIAL_CAMERA.pitch,
         bearing: INITIAL_CAMERA.bearing,
         maxZoom: 17.5,
-        duration: 1400,
+        duration: 1100,
       });
     }
-  }, [map, selectedRoute, alternateRoute]);
+  }, [map, selectedRoute, alternateRoute, endpointKey]);
 
   useEffect(() => {
     if (!map || !selectedRoute) return;

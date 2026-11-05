@@ -1,4 +1,3 @@
-import { DEMO_DESTINATION, DEMO_ORIGIN } from "@/lib/map/config";
 import { mockRouteOptions } from "@/services/mock/demoRoutes";
 import type { LonLat, RouteOption, RouteKind } from "@/types/routes";
 
@@ -90,12 +89,21 @@ function parseRouteResponse(payload: unknown): RouteOption[] {
   return routes;
 }
 
-export async function fetchRouteOptions(
-  signal?: AbortSignal,
-): Promise<RouteOption[]> {
+interface FetchRouteOptionsInput {
+  origin: LonLat;
+  destination: LonLat;
+  signal?: AbortSignal;
+}
+
+export async function fetchRouteOptions({
+  origin,
+  destination,
+  signal,
+}: FetchRouteOptionsInput): Promise<RouteOption[]> {
   if (USE_MOCK) {
-    await new Promise((resolve) => setTimeout(resolve, 250));
-    return mockRouteOptions();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    return mockRouteOptions(origin, destination);
   }
 
   const base = import.meta.env.VITE_API_BASE_URL?.trim();
@@ -105,8 +113,8 @@ export async function fetchRouteOptions(
   }
 
   const request: RouteRequest = {
-    origin: DEMO_ORIGIN,
-    destination: DEMO_DESTINATION,
+    origin,
+    destination,
     profile: "walking",
     alternatives: ["fastest", "weighted"],
   };
