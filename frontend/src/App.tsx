@@ -16,6 +16,7 @@ import {
 } from "@/features/routes/route-input-context";
 
 import type { RouteKind } from "@/types/routes";
+import { SolarShadowsLayer } from "./components/map/SolarShadowsLayer";
 
 function AppContent() {
   const [selectedRouteKind, setSelectedRouteKind] =
@@ -30,6 +31,7 @@ function AppContent() {
           <BuildingsLayer selectedRouteKind={selectedRouteKind} />
           <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
           <TreeShadeLayer />
+          <SolarShadowsLayer />
           <RoadNetworkLayer />
           <WaterPointsLayer />
           <RoutesLayer selectedRouteKind={selectedRouteKind} />
