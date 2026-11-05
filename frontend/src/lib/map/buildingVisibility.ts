@@ -8,8 +8,8 @@ export type BuildingVisibilityBand = "obstructing" | "shade" | "distant";
 
 export const HIDDEN_BUILDING_FILTER = [
   "==",
-  1,
-  0,
+  ["get", "__coolroute_visibility_pending__"],
+  true,
 ] as unknown as FilterSpecification;
 
 export function createBuildingVisibilityFilter(
