@@ -100,15 +100,15 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
       ["linear"],
       heightExpression,
       1,
-      "#DDE8D6",
+      "#E8EEE7",
       5,
-      "#C6D7BE",
+      "#E4EBE2",
       10,
-      "#ADC5A6",
+      "#DFE7DD",
       15,
-      "#91AA8C",
+      "#D9E3D7",
       21,
-      "#718B72",
+      "#D2DED0",
     ];
 
     function addExtrusion(
@@ -136,9 +136,24 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
       );
     }
 
-    addExtrusion(mapInstance, LAYERS.obstructing, "#D0DCCF", 0.22);
+    addExtrusion(mapInstance, LAYERS.obstructing, "#D0DCCF", 0.28);
     addExtrusion(mapInstance, LAYERS.shade, shadeColorExpression, 0.96);
-    addExtrusion(mapInstance, LAYERS.distant, "#252E29", 1);
+    addExtrusion(
+      mapInstance,
+      LAYERS.distant,
+      [
+        "interpolate",
+        ["linear"],
+        heightExpression,
+        1,
+        "#303B33",
+        8,
+        "#242F28",
+        17,
+        "#19231D",
+      ],
+      1,
+    );
 
     mapInstance.addLayer(
       {
@@ -148,7 +163,7 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
         minzoom: 17,
         filter: HIDDEN_BUILDING_FILTER,
         paint: {
-          "line-color": "#758078",
+          "line-color": "#647267",
           "line-width": [
             "interpolate",
             ["linear"],
@@ -160,7 +175,7 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
             20,
             0.85,
           ],
-          "line-opacity": 0.58,
+          "line-opacity": 0.68,
         },
       },
       firstSymbolLayer,

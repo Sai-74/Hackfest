@@ -1,8 +1,8 @@
 import type { FilterSpecification } from "maplibre-gl";
 import type { LonLat } from "@/types/routes";
 
-export const BUILDING_OBSTRUCTION_DISTANCE_M = 9;
-export const BUILDING_SHADE_DISTANCE_M = 32;
+export const BUILDING_OBSTRUCTION_DISTANCE_M = 7;
+export const BUILDING_SHADE_DISTANCE_M = 42;
 
 export type BuildingVisibilityBand = "obstructing" | "shade" | "distant";
 
@@ -37,79 +37,192 @@ export const HIDDEN_BUILDING_FILTER = [
   true,
 ] as unknown as FilterSpecification;
 
-function collectPositions(value: unknown, output: LonLat[] = []): LonLat[] {
-  if (!Array.isArray(value)) return output;
+type XY = [number, number];
+type Ring = XY[];
+type PolygonRings = Ring[];
+
+function projectLocal(
+  point: LonLat,
+  origin: LonLat,
+  longitudeScale: number,
+): XY {
+  return [
+    (point[0] - origin[0]) * longitudeScale,
+    (point[1] - origin[1]) * 110574,
+  ];
+}
+
+function cross(a: XY, b: XY, c: XY): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+}
+
+function pointToSegmentDistance(point: XY, start: XY, end: XY): number {
+  const dx = end[0] - start[0];
+  const dy = end[1] - start[1];
+
+  const lengthSquared = dx * dx + dy * dy;
+
+  if (lengthSquared === 0) {
+    return Math.hypot(point[0] - start[0], point[1] - start[1]);
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(
+      1,
+      ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / lengthSquared,
+    ),
+  );
+
+  return Math.hypot(
+    point[0] - (start[0] + t * dx),
+    point[1] - (start[1] + t * dy),
+  );
+}
+
+function segmentsIntersect(a: XY, b: XY, c: XY, d: XY): boolean {
+  const epsilon = 1e-7;
+
+  const o1 = cross(a, b, c);
+  const o2 = cross(a, b, d);
+  const o3 = cross(c, d, a);
+  const o4 = cross(c, d, b);
 
   if (
-    value.length >= 2 &&
-    typeof value[0] === "number" &&
-    typeof value[1] === "number"
+    ((o1 > epsilon && o2 < -epsilon) || (o1 < -epsilon && o2 > epsilon)) &&
+    ((o3 > epsilon && o4 < -epsilon) || (o3 < -epsilon && o4 > epsilon))
   ) {
-    output.push([value[0], value[1]]);
-    return output;
+    return true;
   }
 
-  for (const child of value) {
-    collectPositions(child, output);
-  }
-
-  return output;
+  return (
+    pointToSegmentDistance(c, a, b) <= epsilon ||
+    pointToSegmentDistance(d, a, b) <= epsilon ||
+    pointToSegmentDistance(a, c, d) <= epsilon ||
+    pointToSegmentDistance(b, c, d) <= epsilon
+  );
 }
 
-function geometryCenter(geometry: BuildingGeometry): LonLat {
-  const positions = collectPositions(geometry.coordinates);
+function segmentToSegmentDistance(a: XY, b: XY, c: XY, d: XY): number {
+  if (segmentsIntersect(a, b, c, d)) return 0;
 
-  if (positions.length === 0) return [0, 0];
-
-  let minLon = Infinity;
-  let maxLon = -Infinity;
-  let minLat = Infinity;
-  let maxLat = -Infinity;
-
-  for (const [lon, lat] of positions) {
-    minLon = Math.min(minLon, lon);
-    maxLon = Math.max(maxLon, lon);
-    minLat = Math.min(minLat, lat);
-    maxLat = Math.max(maxLat, lat);
-  }
-
-  return [(minLon + maxLon) / 2, (minLat + maxLat) / 2];
+  return Math.min(
+    pointToSegmentDistance(a, c, d),
+    pointToSegmentDistance(b, c, d),
+    pointToSegmentDistance(c, a, b),
+    pointToSegmentDistance(d, a, b),
+  );
 }
 
-export function distancePointToRouteMeters(
-  point: LonLat,
-  route: LonLat[],
-): number {
-  if (route.length < 2) return Number.MAX_SAFE_INTEGER;
+function pointInRing(point: XY, ring: Ring): boolean {
+  let inside = false;
 
-  const xScale = 111320 * Math.cos((point[1] * Math.PI) / 180);
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+
+    const crosses =
+      a[1] > point[1] !== b[1] > point[1] &&
+      point[0] < ((b[0] - a[0]) * (point[1] - a[1])) / (b[1] - a[1]) + a[0];
+
+    if (crosses) inside = !inside;
+  }
+
+  return inside;
+}
+
+function pointInPolygon(point: XY, rings: PolygonRings): boolean {
+  if (!rings.length || !pointInRing(point, rings[0])) {
+    return false;
+  }
+
+  // Interior rings represent holes.
+  for (let i = 1; i < rings.length; i++) {
+    if (pointInRing(point, rings[i])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function collectPolygonDistance(rings: PolygonRings, route: XY[]): number {
+  if (!rings.length || route.length < 2) {
+    return Infinity;
+  }
 
   let minimumDistance = Infinity;
 
   for (let i = 0; i < route.length - 1; i++) {
-    const a = route[i];
-    const b = route[i + 1];
+    const routeStart = route[i];
+    const routeEnd = route[i + 1];
 
-    const ax = (a[0] - point[0]) * xScale;
-    const ay = (a[1] - point[1]) * 110574;
+    const midpoint: XY = [
+      (routeStart[0] + routeEnd[0]) / 2,
+      (routeStart[1] + routeEnd[1]) / 2,
+    ];
 
-    const bx = (b[0] - point[0]) * xScale;
-    const by = (b[1] - point[1]) * 110574;
+    // The route is inside the polygon, not just near it.
+    if (
+      pointInPolygon(routeStart, rings) ||
+      pointInPolygon(midpoint, rings) ||
+      pointInPolygon(routeEnd, rings)
+    ) {
+      return 0;
+    }
 
-    const dx = bx - ax;
-    const dy = by - ay;
+    for (const ring of rings) {
+      for (let j = 0; j < ring.length - 1; j++) {
+        const distance = segmentToSegmentDistance(
+          routeStart,
+          routeEnd,
+          ring[j],
+          ring[j + 1],
+        );
 
-    const denominator = dx * dx + dy * dy;
+        minimumDistance = Math.min(minimumDistance, distance);
 
-    const t =
-      denominator === 0
-        ? 0
-        : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / denominator));
+        if (minimumDistance === 0) return 0;
+      }
+    }
+  }
 
-    const nearestX = ax + t * dx;
-    const nearestY = ay + t * dy;
+  return minimumDistance;
+}
 
-    minimumDistance = Math.min(minimumDistance, Math.hypot(nearestX, nearestY));
+export function distanceGeometryToRouteMeters(
+  geometry: BuildingGeometry,
+  route: LonLat[],
+): number {
+  if (route.length < 2) return Number.MAX_SAFE_INTEGER;
+
+  const polygons =
+    geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+
+  let minimumDistance = Infinity;
+
+  for (const polygon of polygons) {
+    const firstCoordinate = polygon[0]?.[0];
+
+    if (!firstCoordinate) continue;
+
+    const reference = firstCoordinate;
+    const latitude = (reference[1] * Math.PI) / 180;
+    const longitudeScale = 111320 * Math.cos(latitude);
+
+    const projectedRings = polygon.map((ring) =>
+      ring.map((point) => projectLocal(point, reference, longitudeScale)),
+    );
+
+    const projectedRoute = route.map((point) =>
+      projectLocal(point, reference, longitudeScale),
+    );
+
+    const distance = collectPolygonDistance(projectedRings, projectedRoute);
+
+    minimumDistance = Math.min(minimumDistance, distance);
+
+    if (minimumDistance === 0) return 0;
   }
 
   return minimumDistance;
@@ -121,17 +234,16 @@ export function annotateBuildingsForRoute(
 ): BuildingFeatureCollection {
   return {
     ...collection,
-    features: collection.features.map((feature) => {
-      const center = geometryCenter(feature.geometry);
-
-      return {
-        ...feature,
-        properties: {
-          ...(feature.properties ?? {}),
-          route_distance_m: distancePointToRouteMeters(center, route),
-        },
-      };
-    }),
+    features: collection.features.map((feature) => ({
+      ...feature,
+      properties: {
+        ...(feature.properties ?? {}),
+        route_distance_m: distanceGeometryToRouteMeters(
+          feature.geometry,
+          route,
+        ),
+      },
+    })),
   };
 }
 
