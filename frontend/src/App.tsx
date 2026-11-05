@@ -2,6 +2,7 @@ import { BuildingsLayer } from "@/components/map/BuildingsLayer";
 import { RouteLegend } from "@/components/map/RouteLegend";
 import { RoutesLayer } from "@/components/map/RoutesLayer";
 import { MapViewport } from "@/components/map/MapViewport";
+import { CampusBuildingCellsLayer } from "./components/map/CampusBuildingCellsLayer";
 
 export default function App() {
   return (
@@ -9,6 +10,7 @@ export default function App() {
       <main className="relative flex-1 overflow-hidden">
         <MapViewport>
           <BuildingsLayer />
+          <CampusBuildingCellsLayer />
           <RoutesLayer />
         </MapViewport>
         <RouteLegend />
