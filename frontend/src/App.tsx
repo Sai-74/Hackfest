@@ -27,7 +27,7 @@ function AppContent() {
     <div className="flex h-dvh w-full flex-col bg-background text-foreground">
       <main className="relative flex-1 overflow-hidden">
         <MapViewport>
-          <BuildingsLayer />
+          <BuildingsLayer selectedRouteKind={selectedRouteKind} />
           <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
           <TreeShadeLayer />
           <RoadNetworkLayer />

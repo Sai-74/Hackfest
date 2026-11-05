@@ -136,7 +136,7 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
       );
     }
 
-    addExtrusion(mapInstance, LAYERS.obstructing, "#D0DCCF", 0.28);
+    addExtrusion(mapInstance, LAYERS.obstructing, "#D0DCCF", 0.12);
     addExtrusion(mapInstance, LAYERS.shade, shadeColorExpression, 0.96);
     addExtrusion(
       mapInstance,

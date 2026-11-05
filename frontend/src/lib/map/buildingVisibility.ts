@@ -1,8 +1,11 @@
 import type { FilterSpecification } from "maplibre-gl";
 import type { LonLat } from "@/types/routes";
 
-export const BUILDING_OBSTRUCTION_DISTANCE_M = 7;
-export const BUILDING_SHADE_DISTANCE_M = 42;
+export const BUILDING_OBSTRUCTION_BASE_M = 8;
+export const BUILDING_OBSTRUCTION_HEIGHT_FACTOR = 0.85;
+export const BUILDING_OBSTRUCTION_MIN_M = 14;
+export const BUILDING_OBSTRUCTION_MAX_M = 26;
+export const BUILDING_SHADE_DISTANCE_M = 48;
 
 export type BuildingVisibilityBand = "obstructing" | "shade" | "distant";
 
@@ -228,40 +231,52 @@ export function distanceGeometryToRouteMeters(
   return minimumDistance;
 }
 
+function obstructionReachForHeight(heightM: number): number {
+  return Math.max(
+    BUILDING_OBSTRUCTION_MIN_M,
+    Math.min(
+      BUILDING_OBSTRUCTION_MAX_M,
+      BUILDING_OBSTRUCTION_BASE_M +
+        heightM * BUILDING_OBSTRUCTION_HEIGHT_FACTOR,
+    ),
+  );
+}
+
 export function annotateBuildingsForRoute(
   collection: BuildingFeatureCollection,
   route: LonLat[],
 ): BuildingFeatureCollection {
   return {
     ...collection,
-    features: collection.features.map((feature) => ({
-      ...feature,
-      properties: {
-        ...(feature.properties ?? {}),
-        route_distance_m: distanceGeometryToRouteMeters(
-          feature.geometry,
-          route,
-        ),
-      },
-    })),
+    features: collection.features.map((feature) => {
+      const distance = distanceGeometryToRouteMeters(feature.geometry, route);
+
+      const rawHeight = Number(feature.properties?.height_m);
+      const height = Number.isFinite(rawHeight) ? rawHeight : 4;
+
+      const obstructionReach = obstructionReachForHeight(height);
+
+      const visibility: BuildingVisibilityBand =
+        distance <= obstructionReach
+          ? "obstructing"
+          : distance <= BUILDING_SHADE_DISTANCE_M
+            ? "shade"
+            : "distant";
+
+      return {
+        ...feature,
+        properties: {
+          ...(feature.properties ?? {}),
+          route_distance_m: distance,
+          occlusion_reach_m: obstructionReach,
+          route_visibility: visibility,
+        },
+      };
+    }),
   };
 }
-
 export function createBuildingVisibilityFilter(
   band: BuildingVisibilityBand,
 ): FilterSpecification {
-  switch (band) {
-    case "obstructing":
-      return ["<", "route_distance_m", BUILDING_OBSTRUCTION_DISTANCE_M];
-
-    case "shade":
-      return [
-        "all",
-        [">=", "route_distance_m", BUILDING_OBSTRUCTION_DISTANCE_M],
-        ["<=", "route_distance_m", BUILDING_SHADE_DISTANCE_M],
-      ];
-
-    case "distant":
-      return [">", "route_distance_m", BUILDING_SHADE_DISTANCE_M];
-  }
+  return ["==", "route_visibility", band];
 }
