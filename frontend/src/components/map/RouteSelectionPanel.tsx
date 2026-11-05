@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, ChevronUp, MapPin } from "lucide-react";
 
 import { useRoutes } from "@/features/routes/useRoutes";
 import { useRouteInputs } from "@/features/routes/route-input-context";
@@ -34,10 +34,6 @@ function formatDistance(meters: number): string {
   return meters >= 1000
     ? `${(meters / 1000).toFixed(1)} km`
     : `${Math.round(meters)} m`;
-}
-
-function formatDuration(minutes: number): string {
-  return `${Math.max(1, Math.round(minutes))} min`;
 }
 
 function formatCoordinate(coordinate: LonLat): string {
@@ -93,17 +89,12 @@ function RouteOptionCard({
       {!compact && <p className="text-xs opacity-70">{subtitle}</p>}
 
       <div className="flex items-baseline justify-between gap-2">
-        <p
-          className={[
-            "font-bold leading-tight tabular-nums",
-            compact ? "text-lg" : "text-xl",
-          ].join(" ")}
-        >
+        <p className="text-lg font-bold leading-tight tabular-nums">
           {formatDistance(route.summary.distanceM)}
         </p>
 
         <span className="text-[10px] opacity-75">
-          {formatDuration(route.summary.durationMin)} walk
+          {Math.max(1, Math.round(route.summary.durationMin))} min
         </span>
       </div>
 
@@ -128,7 +119,6 @@ export function RouteSelectionPanel({
   const {
     origin,
     destination,
-    selectionMode,
     setSelectionMode,
     swapEndpoints,
     resetEndpoints,
@@ -137,137 +127,121 @@ export function RouteSelectionPanel({
   const { data, isLoading, isFetching, isError, error, refetch } = useRoutes();
 
   const fastest = data?.find((route) => route.kind === "fastest");
-
   const recommended = data?.find((route) => route.kind === "weighted");
 
   const selectedRoute = data?.find((route) => route.kind === selectedRouteKind);
 
-  function pickLocation(mode: "origin" | "destination") {
-    setExpanded(true);
-    setSelectionMode(selectionMode === mode ? null : mode);
+  function beginPicking(mode: "origin" | "destination") {
+    setExpanded(false);
+    setSelectionMode(mode);
   }
 
   return (
     <section
       className={[
         "pointer-events-auto absolute bottom-3 left-1/2 z-20",
-        "w-[min(94vw,680px)] -translate-x-1/2",
+        "w-[min(96vw,680px)] -translate-x-1/2",
         "rounded-2xl border border-border bg-card/95 p-2.5 shadow-xl backdrop-blur-md sm:p-3",
-        "transition-[max-height] duration-300 ease-out",
         expanded
           ? "max-h-[min(78dvh,760px)] overflow-y-auto"
           : "overflow-hidden",
       ].join(" ")}
     >
-      {/* Panel header / expand control */}
-      <div className="mb-2 flex items-center justify-between gap-3 px-1">
+      {/* Header */}
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <div className="min-w-0">
           <p className="text-sm font-bold text-card-foreground">
-            {expanded ? "Plan your route" : "Your route"}
+            Plan your route
           </p>
-
           <p className="truncate text-[10px] text-muted-foreground">
             {expanded
-              ? "Choose your campus start and destination"
-              : selectedRoute
-                ? `${selectedRoute.kind === "weighted" ? "Recommended" : "Fastest"} · ${formatDistance(selectedRoute.summary.distanceM)} · ${formatDuration(selectedRoute.summary.durationMin)} walk`
-                : "Campus walking routes"}
+              ? "Route endpoints and environmental details"
+              : "Choose a route or change your endpoints"}
           </p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
-          {expanded && (
-            <button
-              type="button"
-              onClick={resetEndpoints}
-              className="text-[10px] font-semibold text-muted-foreground hover:text-foreground"
-            >
-              Reset
-            </button>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((value) => !value)}
+          className="flex shrink-0 items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[10px] font-semibold text-secondary-foreground hover:bg-primary/10"
+        >
+          {expanded ? "Less" : "Details"}
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronUp className="h-3.5 w-3.5" />
           )}
-
-          <button
-            type="button"
-            aria-expanded={expanded}
-            onClick={() => setExpanded((value) => !value)}
-            className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[10px] font-semibold text-secondary-foreground transition-colors hover:bg-primary/10"
-          >
-            {expanded ? "Collapse" : "Stops & details"}
-            {expanded ? (
-              <ChevronDown className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronUp className="h-3.5 w-3.5" />
-            )}
-          </button>
-        </div>
+        </button>
       </div>
 
-      {/* Origin and destination controls */}
+      {/* Always-accessible endpoint selection */}
+      <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <button
+          type="button"
+          onClick={() => beginPicking("origin")}
+          className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-border bg-background/80 px-2 py-2 text-xs font-semibold text-card-foreground transition-colors hover:border-primary hover:bg-primary/5"
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-600" />
+          <span className="truncate">Set start</span>
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        </button>
+
+        <button
+          type="button"
+          onClick={swapEndpoints}
+          title="Swap endpoints"
+          aria-label="Swap origin and destination"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+        </button>
+
+        <button
+          type="button"
+          onClick={() => beginPicking("destination")}
+          className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-border bg-background/80 px-2 py-2 text-xs font-semibold text-card-foreground transition-colors hover:border-primary hover:bg-primary/5"
+        >
+          <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+          <span className="truncate">Set destination</span>
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* Expanded endpoint information */}
       {expanded && (
-        <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-          <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-              <span className="mr-1 text-emerald-600">●</span>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="min-w-0 rounded-lg bg-background/70 p-2">
+            <p className="text-[9px] font-bold uppercase text-muted-foreground">
               Origin
             </p>
-
-            <p className="mt-1 truncate text-xs font-semibold tabular-nums">
+            <p className="mt-1 truncate text-[11px] font-semibold tabular-nums">
               {formatCoordinate(origin)}
             </p>
+          </div>
 
-            <button
-              type="button"
-              onClick={() => pickLocation("origin")}
-              className={[
-                "mt-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors",
-                selectionMode === "origin"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-primary/10",
-              ].join(" ")}
-            >
-              {selectionMode === "origin" ? "Cancel" : "Pick on map"}
-            </button>
+          <div className="min-w-0 rounded-lg bg-background/70 p-2">
+            <p className="text-[9px] font-bold uppercase text-muted-foreground">
+              Destination
+            </p>
+            <p className="mt-1 truncate text-[11px] font-semibold tabular-nums">
+              {formatCoordinate(destination)}
+            </p>
           </div>
 
           <button
             type="button"
-            onClick={swapEndpoints}
-            title="Swap origin and destination"
-            aria-label="Swap origin and destination"
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-lg text-foreground transition-colors hover:bg-secondary"
+            onClick={resetEndpoints}
+            className="col-span-2 text-left text-[10px] font-semibold text-muted-foreground hover:text-foreground"
           >
-            ⇄
+            Reset demo locations
           </button>
-
-          <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-              <span className="mr-1 text-amber-500">●</span>
-              Destination
-            </p>
-
-            <p className="mt-1 truncate text-xs font-semibold tabular-nums">
-              {formatCoordinate(destination)}
-            </p>
-
-            <button
-              type="button"
-              onClick={() => pickLocation("destination")}
-              className={[
-                "mt-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors",
-                selectionMode === "destination"
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-secondary text-secondary-foreground hover:bg-primary/10",
-              ].join(" ")}
-            >
-              {selectionMode === "destination" ? "Cancel" : "Pick on map"}
-            </button>
-          </div>
         </div>
       )}
 
       {isFetching && (
         <p className="mb-2 px-1 text-[10px] text-muted-foreground">
-          Recalculating campus routes…
+          Recalculating routes…
         </p>
       )}
 
@@ -298,9 +272,9 @@ export function RouteSelectionPanel({
         </div>
       )}
 
+      {/* Route choices */}
       {fastest && recommended && selectedRoute && (
         <>
-          {/* Route choices */}
           <div className="grid grid-cols-2 gap-2">
             <RouteOptionCard
               route={fastest}
@@ -321,8 +295,6 @@ export function RouteSelectionPanel({
             />
           </div>
 
-          {/* Compact metrics always stay visible.
-              Detailed breakdown appears when expanded. */}
           <RouteInsights route={selectedRoute} expanded={expanded} />
         </>
       )}
