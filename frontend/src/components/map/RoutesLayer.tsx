@@ -70,7 +70,7 @@ function chevronFeatures(route: RouteOption, index: LineIndex) {
     const [lon, lat] = index.pointAt(dist);
     features.push({
       type: "Feature" as const,
-      id: 1,
+      id: i,
       properties: {
         color: heatColorFor(scoreAt(route.segments, dist)),
         bearing: (((index.bearingAt(dist) - 90) % 360) + 360) % 360,
@@ -215,17 +215,14 @@ export function RoutesLayer() {
       | maplibregl.GeoJSONSource
       | undefined;
     if (!source) return;
-    const index = buildLineIndex(weighted.geometry);
 
-    if (!Number.isFinite(index.total) || index.total <= 0) return;
     if (weighted.geometry.length < 2) return;
+    const index = buildLineIndex(weighted.geometry);
+    if (!Number.isFinite(index.total) || index.total <= 0) return;
 
-    const features = chevronFeatures(weighted, index);
+    const featureCollection = chevronFeatures(weighted, index);
 
-    source.setData({
-      type: "FeatureCollection",
-      features,
-    });
+    source.setData(featureCollection);
 
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       return;
@@ -246,7 +243,7 @@ export function RoutesLayer() {
 
         const nextActiveIds = new Set<number>();
 
-        for (const feature of features) {
+        for (const feature of featureCollection.features) {
           const id = feature.id as number;
           const distance = feature.properties.distanceM;
           const delta = Math.abs(distance - pulseDistance);
