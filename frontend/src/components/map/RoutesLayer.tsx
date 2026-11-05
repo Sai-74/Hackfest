@@ -15,10 +15,11 @@ import {
 } from "@/lib/map/layers";
 import type { RouteOption } from "@/types/routes";
 
-const CHEVRON_SPACING_M = 6;
-const PULSE_CYCLE_MS = 1500;
-const PULSE_RADIUS_M = 28;
-const PULSE_FRAME_MS = 10;
+const CHEVRON_SPACING_PX = 22;
+const CHEVRON_SAMPLE_STEP_M = 0.5;
+const PULSE_CYCLE_MS = 950;
+const PULSE_RADIUS_PX = 48;
+const PULSE_FRAME_MS = 16;
 const CHEVRON_IMAGE_ID = "coolroute-chevron";
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;
@@ -62,24 +63,87 @@ function scoreAt(segments: RouteOption["segments"], dist: number): number {
   return (segment ?? segments[segments.length - 1]).score;
 }
 
-function chevronFeatures(route: RouteOption, index: LineIndex) {
-  const count = Math.max(2, Math.floor(index.total / CHEVRON_SPACING_M));
+function chevronFeatures(
+  route: RouteOption,
+  index: LineIndex,
+  map: maplibregl.Map,
+) {
   const features = [];
-  for (let i = 0; i < count; i++) {
-    const dist = ((i + 0.5) / count) * index.total;
-    const [lon, lat] = index.pointAt(dist);
+  let screenDistancePx = 0;
+  let nextChevronPx = CHEVRON_SPACING_PX / 2;
+  let previousDistanceM = 0;
+  let previousPoint = map.project(index.pointAt(0));
+  let id = 0;
+
+  while (previousDistanceM < index.total) {
+    const nextDistanceM = Math.min(
+      previousDistanceM + CHEVRON_SAMPLE_STEP_M,
+      index.total,
+    );
+    const nextPoint = map.project(index.pointAt(nextDistanceM));
+    const segmentPixels = Math.hypot(
+      nextPoint.x - previousPoint.x,
+      nextPoint.y - previousPoint.y,
+    );
+
+    if (segmentPixels > 0) {
+      while (screenDistancePx + segmentPixels >= nextChevronPx) {
+        const t = (nextChevronPx - screenDistancePx) / segmentPixels;
+        const distanceM =
+          previousDistanceM + (nextDistanceM - previousDistanceM) * t;
+        const [lon, lat] = index.pointAt(distanceM);
+
+        features.push({
+          type: "Feature" as const,
+          id,
+          properties: {
+            color: heatColorFor(scoreAt(route.segments, distanceM)),
+            bearing: (((index.bearingAt(distanceM) - 90) % 360) + 360) % 360,
+            distanceM,
+            screenDistancePx: nextChevronPx,
+          },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [lon, lat],
+          },
+        });
+        id++;
+        nextChevronPx += CHEVRON_SPACING_PX;
+      }
+    }
+
+    screenDistancePx += segmentPixels;
+    previousDistanceM = nextDistanceM;
+    previousPoint = nextPoint;
+  }
+
+  if (features.length === 0 && screenDistancePx > 0) {
+    const distanceM = index.total / 2;
+    const [lon, lat] = index.pointAt(distanceM);
+
     features.push({
       type: "Feature" as const,
-      id: i,
+      id: 0,
       properties: {
-        color: heatColorFor(scoreAt(route.segments, dist)),
-        bearing: (((index.bearingAt(dist) - 90) % 360) + 360) % 360,
-        distanceM: dist,
+        color: heatColorFor(scoreAt(route.segments, distanceM)),
+        bearing: (((index.bearingAt(distanceM) - 90) % 360) + 360) % 360,
+        distanceM,
+        screenDistancePx: screenDistancePx / 2,
       },
-      geometry: { type: "Point" as const, coordinates: [lon, lat] },
+      geometry: {
+        type: "Point" as const,
+        coordinates: [lon, lat],
+      },
     });
   }
-  return { type: "FeatureCollection" as const, features };
+
+  return {
+    featureCollection: {
+      type: "FeatureCollection" as const,
+      features,
+    },
+    screenLengthPx: screenDistancePx,
+  };
 }
 
 function hasSameGeometry(
@@ -250,49 +314,52 @@ export function RoutesLayer() {
     const source = map.getSource(CHEVRON_SOURCE_ID) as
       | maplibregl.GeoJSONSource
       | undefined;
-    if (!source) return;
-
-    if (weighted.geometry.length < 2) return;
+    if (!source || weighted.geometry.length < 2) return;
     const index = buildLineIndex(weighted.geometry);
     if (!Number.isFinite(index.total) || index.total <= 0) return;
-
-    const featureCollection = chevronFeatures(weighted, index);
-
-    source.setData(featureCollection);
-
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-
+    let featureData = chevronFeatures(weighted, index, map);
+    source.setData(featureData.featureCollection);
     let raf = 0;
     let lastFrame = 0;
     let activeIds = new Set<number>();
 
-    const start = performance.now();
+    const rebuildChevrons = () => {
+      for (const id of activeIds) {
+        map.setFeatureState({ source: CHEVRON_SOURCE_ID, id }, { pulse: 0 });
+      }
 
+      activeIds.clear();
+      featureData = chevronFeatures(weighted, index, map);
+      source.setData(featureData.featureCollection);
+    };
+
+    map.on("moveend", rebuildChevrons);
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return () => {
+        map.off("moveend", rebuildChevrons);
+      };
+    }
+
+    const start = performance.now();
     const tick = (now: number) => {
       if (now - lastFrame >= PULSE_FRAME_MS) {
         lastFrame = now;
-
         const progress = ((now - start) % PULSE_CYCLE_MS) / PULSE_CYCLE_MS;
-        const pulseDistance = progress * index.total;
-
+        const pulseDistancePx = progress * featureData.screenLengthPx;
         const nextActiveIds = new Set<number>();
 
-        for (const feature of featureCollection.features) {
+        for (const feature of featureData.featureCollection.features) {
           const id = feature.id as number;
-          const distance = feature.properties.distanceM;
-          const delta = Math.abs(distance - pulseDistance);
-
-          if (delta <= PULSE_RADIUS_M) {
-            const raw = 1 - delta / PULSE_RADIUS_M;
+          const distance = feature.properties.screenDistancePx;
+          const delta = Math.abs(distance - pulseDistancePx);
+          if (delta <= PULSE_RADIUS_PX) {
+            const raw = 1 - delta / PULSE_RADIUS_PX;
             const intensity = raw * raw * (3 - 2 * raw);
-
             map.setFeatureState(
               { source: CHEVRON_SOURCE_ID, id },
               { pulse: intensity },
             );
-
             nextActiveIds.add(id);
           }
         }
@@ -315,6 +382,7 @@ export function RoutesLayer() {
     raf = requestAnimationFrame(tick);
 
     return () => {
+      map.off("moveend", rebuildChevrons);
       cancelAnimationFrame(raf);
 
       for (const id of activeIds) {
