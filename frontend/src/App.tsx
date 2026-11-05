@@ -37,21 +37,24 @@ function AppContent() {
           <RouteMapPicker />
         </MapViewport>
 
-        <RouteLegend />
+        {!selectionMode && <RouteLegend />}
 
         {selectionMode && (
-          <div className="pointer-events-none absolute inset-x-0 top-4 z-30 flex justify-center px-4">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-2.5 shadow-lg backdrop-blur-md">
-              <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+          <div className="absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+            <div className="flex items-center gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur-md">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+              </span>
 
               <p className="text-xs font-semibold text-card-foreground">
-                Click the map to set your {selectionMode}
+                Tap map to set {selectionMode}
               </p>
 
               <button
                 type="button"
                 onClick={() => setSelectionMode(null)}
-                className="text-xs font-semibold text-muted-foreground hover:text-foreground"
+                className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-secondary-foreground hover:bg-primary/10"
               >
                 Cancel
               </button>
@@ -59,10 +62,12 @@ function AppContent() {
           </div>
         )}
 
-        <RouteSelectionPanel
-          selectedRouteKind={selectedRouteKind}
-          onSelectRoute={setSelectedRouteKind}
-        />
+        {!selectionMode && (
+          <RouteSelectionPanel
+            selectedRouteKind={selectedRouteKind}
+            onSelectRoute={setSelectedRouteKind}
+          />
+        )}
       </main>
     </div>
   );
