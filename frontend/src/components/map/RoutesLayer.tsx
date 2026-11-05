@@ -17,7 +17,7 @@ import type { RouteOption } from "@/types/routes";
 
 const CHEVRON_SPACING_PX = 22;
 const CHEVRON_SAMPLE_STEP_M = 0.5;
-const PULSE_CYCLE_MS = 950;
+const PULSE_CYCLE_MS = 1850;
 const PULSE_RADIUS_PX = 48;
 const PULSE_FRAME_MS = 16;
 const CHEVRON_IMAGE_ID = "coolroute-chevron";
@@ -44,7 +44,7 @@ function chevronImageData(): ImageData {
 
 function scoreAt(segments: RouteOption["segments"], dist: number): number {
   if (!segments.length) return 0;
-  const blendRadius = 24;
+  const blendRadius = 2;
 
   for (let i = 1; i < segments.length; i++) {
     const boundary = segments[i].startDist;

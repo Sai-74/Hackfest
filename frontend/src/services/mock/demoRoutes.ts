@@ -1,6 +1,7 @@
 import { DEMO_DESTINATION, DEMO_ORIGIN } from "@/lib/map/config";
 import { buildLineIndex } from "@/lib/map/lineMath";
 import type { LonLat, RouteOption } from "@/types/routes";
+import { DEMO_TREES } from "@/services/mock/demoTrees";
 
 interface NodeFeature {
   properties: {
@@ -46,6 +47,67 @@ function distanceMeters(a: LonLat, b: LonLat): number {
   const dy = (b[1] - a[1]) * 110574;
 
   return Math.hypot(dx, dy);
+}
+
+function shadeCoverageAt(point: LonLat): number {
+  let unshaded = 1;
+
+  for (const tree of DEMO_TREES) {
+    const distance = distanceMeters(point, tree.shadeCenter);
+
+    if (distance >= tree.shadeRadiusM) continue;
+
+    const normalized = distance / tree.shadeRadiusM;
+
+    // Smooth radial influence: strongest under the canopy,
+    // fading towards the edge of the shade area.
+    const influence = (1 + Math.cos(Math.PI * normalized)) / 2;
+
+    // Combine overlapping tree shade without exceeding 100%.
+    unshaded *= 1 - influence;
+  }
+
+  return 1 - unshaded;
+}
+
+function createShadeHeatSegments(
+  index: ReturnType<typeof buildLineIndex>,
+): RouteOption["segments"] {
+  const SAMPLE_INTERVAL_M = 4;
+
+  // Synthetic exposed-road heat and maximum shade benefit.
+  const BASE_HEAT = 82;
+  const MAX_SHADE_REDUCTION = 55;
+
+  const segments: RouteOption["segments"] = [];
+
+  for (
+    let startDist = 0;
+    startDist < index.total;
+    startDist += SAMPLE_INTERVAL_M
+  ) {
+    const endDist = Math.min(startDist + SAMPLE_INTERVAL_M, index.total);
+
+    // Average coverage across each small route segment.
+    const samples = [0.25, 0.5, 0.75];
+
+    const coverage =
+      samples.reduce((total, fraction) => {
+        const distance = startDist + (endDist - startDist) * fraction;
+
+        return total + shadeCoverageAt(index.pointAt(distance));
+      }, 0) / samples.length;
+
+    const score = Math.round(BASE_HEAT - coverage * MAX_SHADE_REDUCTION);
+
+    segments.push({
+      startDist,
+      endDist,
+      score,
+    });
+  }
+
+  return segments;
 }
 
 function nearestNode(coordinate: LonLat, nodes: NodeFeature[]): NodeFeature {
@@ -228,20 +290,7 @@ export async function mockRouteOptions(): Promise<RouteOption[]> {
     throw new Error("Generated road route has invalid geometry.");
   }
 
-  // Temporary demo heat data until the backend supplies
-  // actual environmental scores for each road segment.
-  const segments = [
-    {
-      startDist: 0,
-      endDist: index.total * 0.5,
-      score: 28,
-    },
-    {
-      startDist: index.total * 0.5,
-      endDist: index.total,
-      score: 72,
-    },
-  ];
+  const segments = createShadeHeatSegments(index);
 
   const shared = {
     geometry,
