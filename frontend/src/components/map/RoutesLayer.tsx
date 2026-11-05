@@ -15,8 +15,10 @@ import {
 } from "@/lib/map/layers";
 import type { RouteOption } from "@/types/routes";
 
-const CHEVRON_SPACING_M = 26;
-const CHEVRON_SPEED_MPS = 5;
+const CHEVRON_SPACING_M = 6;
+const PULSE_CYCLE_MS = 7000;
+const PULSE_RADIUS_M = 28;
+const PULSE_FRAME_MS = 50;
 const CHEVRON_IMAGE_ID = "coolroute-chevron";
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;
@@ -40,25 +42,39 @@ function chevronImageData(): ImageData {
 }
 
 function scoreAt(segments: RouteOption["segments"], dist: number): number {
-  const seg = segments.find((s) => dist >= s.startDist && dist < s.endDist);
-  return (seg ?? segments[segments.length - 1]).score;
+  if (!segments.length) return 0;
+  const blendRadius = 24;
+
+  for (let i = 1; i < segments.length; i++) {
+    const boundary = segments[i].startDist;
+    const start = boundary - blendRadius;
+    const end = boundary + blendRadius;
+    if (dist >= start && dist <= end) {
+      const t = (dist - start) / (end - start);
+      const eased = t * t * (3 - 2 * t);
+      const previous = segments[i - 1].score;
+      const next = segments[i].score;
+      return previous + (next - previous) * eased;
+    }
+  }
+
+  const segment = segments.find((s) => dist >= s.startDist && dist < s.endDist);
+  return (segment ?? segments[segments.length - 1]).score;
 }
 
-function chevronFeatures(
-  route: RouteOption,
-  index: LineIndex,
-  offsetM: number,
-) {
+function chevronFeatures(route: RouteOption, index: LineIndex) {
   const count = Math.max(2, Math.floor(index.total / CHEVRON_SPACING_M));
   const features = [];
   for (let i = 0; i < count; i++) {
-    const dist = (i * CHEVRON_SPACING_M + offsetM) % index.total;
+    const dist = ((i + 0.5) / count) * index.total;
     const [lon, lat] = index.pointAt(dist);
     features.push({
       type: "Feature" as const,
+      id: 1,
       properties: {
         color: heatColorFor(scoreAt(route.segments, dist)),
-        bearing: index.bearingAt(dist),
+        bearing: (((index.bearingAt(dist) - 90) % 360) + 360) % 360,
+        distanceM: dist,
       },
       geometry: { type: "Point" as const, coordinates: [lon, lat] },
     });
@@ -111,15 +127,38 @@ export function RoutesLayer() {
       source: CHEVRON_SOURCE_ID,
       layout: {
         "icon-image": CHEVRON_IMAGE_ID,
-        "icon-size": 0.8,
+        "icon-size": 0.62,
         "icon-rotate": ["get", "bearing"],
         "icon-rotation-alignment": "map",
         "icon-allow-overlap": true,
         "icon-ignore-placement": true,
       },
       paint: {
-        "icon-color": ["get", "color"],
-        "icon-opacity": 0.95,
+        "icon-color": [
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["feature-state", "pulse"], 0],
+          0,
+          ["get", "color"],
+          1,
+          "#FFF4CA",
+        ],
+        "icon-opacity": [
+          "interpolate",
+          ["linear"],
+          ["coalesce", ["feature-state", "pulse"], 0],
+          0,
+          0.9,
+          1,
+          1,
+        ],
+        "icon-halo-color": "#FFF4CA",
+        "icon-halo-width": [
+          "*",
+          ["coalesce", ["feature-state", "pulse"], 0],
+          1.4,
+        ],
+        "icon-halo-blur": 0.6,
       },
     });
     return () => {
@@ -177,22 +216,78 @@ export function RoutesLayer() {
       | undefined;
     if (!source) return;
     const index = buildLineIndex(weighted.geometry);
-    source.setData(chevronFeatures(weighted, index, 0));
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    if (!Number.isFinite(index.total) || index.total <= 0) return;
+    if (weighted.geometry.length < 2) return;
+
+    const features = chevronFeatures(weighted, index);
+
+    source.setData({
+      type: "FeatureCollection",
+      features,
+    });
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+
     let raf = 0;
+    let lastFrame = 0;
+    let activeIds = new Set<number>();
+
     const start = performance.now();
+
     const tick = (now: number) => {
-      source.setData(
-        chevronFeatures(
-          weighted,
-          index,
-          ((now - start) / 1000) * CHEVRON_SPEED_MPS,
-        ),
-      );
+      if (now - lastFrame >= PULSE_FRAME_MS) {
+        lastFrame = now;
+
+        const progress = ((now - start) % PULSE_CYCLE_MS) / PULSE_CYCLE_MS;
+        const pulseDistance = progress * index.total;
+
+        const nextActiveIds = new Set<number>();
+
+        for (const feature of features) {
+          const id = feature.id as number;
+          const distance = feature.properties.distanceM;
+          const delta = Math.abs(distance - pulseDistance);
+
+          if (delta <= PULSE_RADIUS_M) {
+            const raw = 1 - delta / PULSE_RADIUS_M;
+            const intensity = raw * raw * (3 - 2 * raw);
+
+            map.setFeatureState(
+              { source: CHEVRON_SOURCE_ID, id },
+              { pulse: intensity },
+            );
+
+            nextActiveIds.add(id);
+          }
+        }
+
+        for (const id of activeIds) {
+          if (!nextActiveIds.has(id)) {
+            map.setFeatureState(
+              { source: CHEVRON_SOURCE_ID, id },
+              { pulse: 0 },
+            );
+          }
+        }
+
+        activeIds = nextActiveIds;
+      }
+
       raf = requestAnimationFrame(tick);
     };
+
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    return () => {
+      cancelAnimationFrame(raf);
+
+      for (const id of activeIds) {
+        map.setFeatureState({ source: CHEVRON_SOURCE_ID, id }, { pulse: 0 });
+      }
+    };
   }, [map, weighted]);
 
   return null;
