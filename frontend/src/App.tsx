@@ -3,7 +3,6 @@ import { BuildingsLayer } from "@/components/map/BuildingsLayer";
 import { RouteLegend } from "@/components/map/RouteLegend";
 import { RoutesLayer } from "@/components/map/RoutesLayer";
 import { MapViewport } from "@/components/map/MapViewport";
-import { CampusBuildingCellsLayer } from "@/components/map/CampusBuildingCellsLayer";
 import { RoadNetworkLayer } from "@/components/map/RoadNetworkLayer";
 import { RouteWaypointsLayer } from "@/components/map/RouteWaypointsLayer";
 import { TreeShadeLayer } from "@/components/map/TreeShadeLayer";
@@ -17,6 +16,7 @@ import {
 
 import type { RouteKind } from "@/types/routes";
 import { SolarShadowsLayer } from "./components/map/SolarShadowsLayer";
+import { SolarTimeProvider } from "./features/shade/solar-time-context";
 
 function AppContent() {
   const [selectedRouteKind, setSelectedRouteKind] =
@@ -29,7 +29,6 @@ function AppContent() {
       <main className="relative flex-1 overflow-hidden">
         <MapViewport>
           <BuildingsLayer selectedRouteKind={selectedRouteKind} />
-          <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
           <TreeShadeLayer />
           <SolarShadowsLayer />
           <RoadNetworkLayer />
@@ -77,8 +76,10 @@ function AppContent() {
 
 export default function App() {
   return (
-    <RouteInputProvider>
-      <AppContent />
-    </RouteInputProvider>
+    <SolarTimeProvider>
+      <RouteInputProvider>
+        <AppContent />
+      </RouteInputProvider>
+    </SolarTimeProvider>
   );
 }

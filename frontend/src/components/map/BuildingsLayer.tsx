@@ -9,6 +9,7 @@ import type { LonLat, RouteKind } from "@/types/routes";
 
 import {
   BUILDING_OBSTRUCTION_MAX_M,
+  BUILDING_SHADE_DISTANCE_M,
   HIDDEN_BUILDING_FILTER,
 } from "@/lib/map/buildingVisibility";
 
@@ -19,6 +20,7 @@ import {
 } from "@/lib/map/layers";
 
 const OBSTRUCTING_LAYER_ID = "coolroute-osm-buildings-obstructing";
+const DISTANT_LAYER_ID = "coolroute-osm-buildings-distant";
 const DIVIDER_LAYER_ID = "coolroute-osm-building-divider";
 
 const OLD_LAYERS = [
@@ -53,8 +55,6 @@ function createCameraOcclusionCorridor(
 ): CorridorFeatureCollection {
   const pitchRadians = (Math.max(0, Math.min(85, pitch)) * Math.PI) / 180;
 
-  // At the default 58-degree pitch, allow a maximum 40 m
-  // camera-facing obstruction corridor.
   const depth = Math.min(
     BUILDING_OBSTRUCTION_MAX_M,
     (BUILDING_OBSTRUCTION_MAX_M * Math.tan(pitchRadians)) /
@@ -64,20 +64,14 @@ function createCameraOcclusionCorridor(
   const features: CorridorPolygonFeature[] = [];
 
   if (route.length < 2 || depth < 0.25) {
-    return {
-      type: "FeatureCollection",
-      features,
-    };
+    return { type: "FeatureCollection", features };
   }
 
-  // Map bearing is the direction pointing up.
-  // The camera-facing direction is therefore the opposite.
   const cameraAzimuth = ((bearing + 180) * Math.PI) / 180;
 
   const cameraEast = Math.sin(cameraAzimuth);
   const cameraNorth = Math.cos(cameraAzimuth);
 
-  // Perpendicular to the camera direction, along screen width.
   const sideEast = -cameraNorth;
   const sideNorth = cameraEast;
 
@@ -104,12 +98,10 @@ function createCameraOcclusionCorridor(
     if (Math.hypot(bx, by) < 0.1) continue;
 
     const corners: LonLat[] = [
-      // Camera-side corridor begins at the route segment.
       toCoordinate(a, -sideEast * halfWidthM, -sideNorth * halfWidthM),
 
       toCoordinate(a, bx - sideEast * halfWidthM, by - sideNorth * halfWidthM),
 
-      // Extend the far edge towards the camera.
       toCoordinate(
         a,
         bx + cameraEast * depth + sideEast * halfWidthM,
@@ -135,10 +127,7 @@ function createCameraOcclusionCorridor(
     });
   }
 
-  return {
-    type: "FeatureCollection",
-    features,
-  };
+  return { type: "FeatureCollection", features };
 }
 
 function createOsmBuildingFilters(
@@ -175,22 +164,31 @@ function createOsmBuildingFilters(
 
   const alwaysFalse = ["==", 1, 0];
 
-  return {
-    obstructing: (pitch < 1
-      ? alwaysFalse
-      : [
-          "all",
-          visibleBuilding,
-          isObstructing,
-        ]) as unknown as maplibregl.FilterSpecification,
+  const effectiveObstruction = pitch < 1 ? alwaysFalse : isObstructing;
 
-    normal: (pitch < 1
-      ? visibleBuilding
-      : [
-          "all",
-          visibleBuilding,
-          ["!", isObstructing],
-        ]) as unknown as maplibregl.FilterSpecification,
+  const nearby = [
+    "all",
+    visibleBuilding,
+    ["<=", ["distance", routeLine], BUILDING_SHADE_DISTANCE_M],
+    ["!", effectiveObstruction],
+  ];
+
+  const distant = [
+    "all",
+    visibleBuilding,
+    [">", ["distance", routeLine], BUILDING_SHADE_DISTANCE_M],
+  ];
+
+  return {
+    obstructing: [
+      "all",
+      visibleBuilding,
+      effectiveObstruction,
+    ] as unknown as maplibregl.FilterSpecification,
+
+    nearby: nearby as unknown as maplibregl.FilterSpecification,
+
+    distant: distant as unknown as maplibregl.FilterSpecification,
   };
 }
 
@@ -201,7 +199,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
   const selectedRoute =
     data?.find((route) => route.kind === selectedRouteKind) ?? null;
 
-  // Create both OSM extrusion layers once.
+  // Create the OSM extrusion layers once.
   useEffect(() => {
     const mapInstance = map;
 
@@ -216,6 +214,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       ...OLD_LAYERS,
       BUILDINGS_EXTRUSION_LAYER_ID,
       OBSTRUCTING_LAYER_ID,
+      DISTANT_LAYER_ID,
       DIVIDER_LAYER_ID,
     ]) {
       if (mapInstance.getLayer(id)) {
@@ -250,6 +249,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
     function addBuildingLayer(
       targetMap: MapLibreMap,
       id: string,
+      color: string,
       opacity: number,
     ) {
       targetMap.addLayer(
@@ -261,7 +261,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
           minzoom: 14,
           filter: HIDDEN_BUILDING_FILTER,
           paint: {
-            "fill-extrusion-color": "#C2CEC3",
+            "fill-extrusion-color": color,
             "fill-extrusion-height": heightExpression,
             "fill-extrusion-base": baseExpression,
             "fill-extrusion-opacity": opacity,
@@ -272,9 +272,19 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       );
     }
 
-    addBuildingLayer(mapInstance, BUILDINGS_EXTRUSION_LAYER_ID, 0.94);
+    // Buildings close to the selected route.
+    addBuildingLayer(
+      mapInstance,
+      BUILDINGS_EXTRUSION_LAYER_ID,
+      "#E5EDE5",
+      0.96,
+    );
 
-    addBuildingLayer(mapInstance, OBSTRUCTING_LAYER_ID, 0.12);
+    // Buildings farther away: muted green, less visually dominant.
+    addBuildingLayer(mapInstance, DISTANT_LAYER_ID, "#59675D", 0.88);
+
+    // Camera-facing buildings that visually obstruct the route.
+    addBuildingLayer(mapInstance, OBSTRUCTING_LAYER_ID, "#E5EDE5", 0.14);
 
     mapInstance.addLayer(
       {
@@ -285,20 +295,21 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
         minzoom: 15,
         filter: HIDDEN_BUILDING_FILTER,
         paint: {
-          "line-color": "#758078",
-          "line-width": 0.3,
-          "line-opacity": 0.08,
+          "line-color": "#65736A",
+          "line-width": 0.45,
+          "line-opacity": 0.32,
         },
       },
       firstSymbolLayer,
     );
 
-    console.info("[buildings] Camera-aware OSM extrusion layers added.");
+    console.info("[buildings] Refined camera-aware building layers added.");
 
     return () => {
       for (const id of [
         DIVIDER_LAYER_ID,
         OBSTRUCTING_LAYER_ID,
+        DISTANT_LAYER_ID,
         BUILDINGS_EXTRUSION_LAYER_ID,
       ]) {
         if (mapInstance.getLayer(id)) {
@@ -308,7 +319,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
     };
   }, [map]);
 
-  // Recalculate camera-facing occlusion after route or camera changes.
+  // Recalculate building visibility after route or camera changes.
   useEffect(() => {
     if (!map || !selectedRoute) return;
 
@@ -331,10 +342,9 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       );
 
       map.setFilter(OBSTRUCTING_LAYER_ID, filters.obstructing);
-
-      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.normal);
-
-      map.setFilter(DIVIDER_LAYER_ID, filters.obstructing);
+      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.nearby);
+      map.setFilter(DISTANT_LAYER_ID, filters.distant);
+      map.setFilter(DIVIDER_LAYER_ID, filters.distant);
     };
 
     updateOcclusion();

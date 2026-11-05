@@ -7,6 +7,17 @@ export interface SolarPosition {
   elevationDeg: number;
 }
 
+export function dateAtLocalTime(
+  timeMinutes: number,
+  referenceDate = new Date(),
+): Date {
+  const date = new Date(referenceDate);
+
+  date.setHours(Math.floor(timeMinutes / 60), timeMinutes % 60, 0, 0);
+
+  return date;
+}
+
 interface SolarShadowFeature {
   type: "Feature";
   id: string;

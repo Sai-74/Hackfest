@@ -2,25 +2,25 @@ import { DEMO_TREES } from "@/services/mock/demoTrees";
 import type { LonLat } from "@/types/routes";
 
 import {
+  dateAtLocalTime,
   getCampusSolarPosition,
   getTreeShadowSegments,
 } from "@/lib/map/solarShadows";
 
-let cachedMinute = -1;
+let cachedTimeMinutes = -1;
+
 let cachedSegments = getTreeShadowSegments(
   DEMO_TREES,
-  getCampusSolarPosition(new Date()),
+  getCampusSolarPosition(dateAtLocalTime(12 * 60)),
 );
 
-function getCurrentShadowSegments() {
-  const currentMinute = Math.floor(Date.now() / 60_000);
-
-  if (currentMinute !== cachedMinute) {
-    cachedMinute = currentMinute;
+function getCurrentShadowSegments(timeMinutes: number) {
+  if (timeMinutes !== cachedTimeMinutes) {
+    cachedTimeMinutes = timeMinutes;
 
     cachedSegments = getTreeShadowSegments(
       DEMO_TREES,
-      getCampusSolarPosition(new Date()),
+      getCampusSolarPosition(dateAtLocalTime(timeMinutes)),
     );
   }
 
@@ -56,10 +56,13 @@ function distanceToSegmentMeters(
  * Estimated tree-shadow coverage at a coordinate.
  * Returns a value between 0 (unshaded) and 1 (fully shaded).
  */
-export function treeShadeCoverageAt(point: LonLat): number {
+export function treeShadeCoverageAt(
+  point: LonLat,
+  timeMinutes = 12 * 60,
+): number {
   let unshaded = 1;
 
-  for (const shadow of getCurrentShadowSegments()) {
+  for (const shadow of getCurrentShadowSegments(timeMinutes)) {
     const distance = distanceToSegmentMeters(point, shadow.start, shadow.end);
 
     if (distance >= shadow.radiusM) continue;

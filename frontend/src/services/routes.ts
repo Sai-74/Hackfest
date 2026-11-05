@@ -93,17 +93,17 @@ interface FetchRouteOptionsInput {
   origin: LonLat;
   destination: LonLat;
   signal?: AbortSignal;
+  solarTimeMinutes?: number;
 }
 
 export async function fetchRouteOptions({
   origin,
   destination,
   signal,
+  solarTimeMinutes,
 }: FetchRouteOptionsInput): Promise<RouteOption[]> {
   if (USE_MOCK) {
-    await new Promise((resolve) => setTimeout(resolve, 150));
-
-    return mockRouteOptions(origin, destination);
+    return mockRouteOptions(origin, destination, solarTimeMinutes ?? 12 * 60);
   }
 
   const base = import.meta.env.VITE_API_BASE_URL?.trim();

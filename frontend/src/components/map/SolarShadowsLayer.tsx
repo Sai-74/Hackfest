@@ -1,27 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import * as maplibregl from "maplibre-gl";
 
 import { useMap } from "./map-context";
 import { DEMO_TREES } from "@/services/mock/demoTrees";
-import type { BuildingFeatureCollection } from "@/lib/map/buildingVisibility";
+import { useSolarTime } from "@/features/shade/solar-time-context";
 import {
   createSolarShadowCollection,
+  dateAtLocalTime,
   getCampusSolarPosition,
 } from "@/lib/map/solarShadows";
+import { BUILDINGS_EXTRUSION_LAYER_ID } from "@/lib/map/layers";
 
 const SOURCE_ID = "coolroute-solar-shadows";
 const FILL_LAYER_ID = "coolroute-solar-shadows-fill";
 const SOFT_EDGE_LAYER_ID = "coolroute-solar-shadows-soft-edge";
 
-const TREE_LAYER_ID = "coolroute-tree-extrusions";
-
-const OLD_TREE_SHADE_LAYERS = [
+const OLD_SHADE_LAYERS = [
   "coolroute-tree-shade-core",
   "coolroute-tree-shade-soft",
   "coolroute-tree-shade-polygons",
 ];
 
-const OLD_TREE_SHADE_SOURCE = "coolroute-tree-shade";
+const OLD_SHADE_SOURCE = "coolroute-tree-shade";
 
 const EMPTY_DATA = {
   type: "FeatureCollection" as const,
@@ -30,52 +30,21 @@ const EMPTY_DATA = {
 
 export function SolarShadowsLayer() {
   const map = useMap();
+  const { timeMinutes } = useSolarTime();
 
-  const [buildingData, setBuildingData] =
-    useState<BuildingFeatureCollection | null>(null);
-
-  // Load the existing campus building polygons.
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function loadBuildings() {
-      try {
-        const response = await fetch(
-          `${import.meta.env.BASE_URL}data/campus-buildings-optimized.geojson`,
-          { signal: controller.signal },
-        );
-
-        if (!response.ok) {
-          throw new Error("Could not load campus building data for shadows.");
-        }
-
-        const collection = (await response.json()) as BuildingFeatureCollection;
-
-        setBuildingData(collection);
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.error("[solar] Building shadow data failed to load:", error);
-        }
-      }
-    }
-
-    void loadBuildings();
-
-    return () => controller.abort();
-  }, []);
-
+  // Create the shadow source and layers once.
   useEffect(() => {
     if (!map) return;
 
     // Remove the previous fixed-position tree shadows.
-    for (const id of OLD_TREE_SHADE_LAYERS) {
+    for (const id of OLD_SHADE_LAYERS) {
       if (map.getLayer(id)) {
         map.removeLayer(id);
       }
     }
 
-    if (map.getSource(OLD_TREE_SHADE_SOURCE)) {
-      map.removeSource(OLD_TREE_SHADE_SOURCE);
+    if (map.getSource(OLD_SHADE_SOURCE)) {
+      map.removeSource(OLD_SHADE_SOURCE);
     }
 
     if (map.getLayer(SOFT_EDGE_LAYER_ID)) {
@@ -93,14 +62,11 @@ export function SolarShadowsLayer() {
     map.addSource(SOURCE_ID, {
       type: "geojson",
       data: EMPTY_DATA,
-      maxzoom: 18,
-      buffer: 32,
-      tolerance: 0.2,
     });
 
-    // Keep ground shadows underneath the 3D tree models.
-    const beforeId = map.getLayer(TREE_LAYER_ID)
-      ? TREE_LAYER_ID
+    // Put shadows on the ground, underneath building extrusions.
+    const beforeId = map.getLayer(BUILDINGS_EXTRUSION_LAYER_ID)
+      ? BUILDINGS_EXTRUSION_LAYER_ID
       : map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
 
     map.addLayer(
@@ -108,6 +74,7 @@ export function SolarShadowsLayer() {
         id: FILL_LAYER_ID,
         type: "fill",
         source: SOURCE_ID,
+        minzoom: 15,
         paint: {
           "fill-color": "#17251C",
           "fill-opacity": ["get", "opacity"],
@@ -117,61 +84,23 @@ export function SolarShadowsLayer() {
       beforeId,
     );
 
-    // Feather the edges instead of leaving hard polygon outlines.
     map.addLayer(
       {
         id: SOFT_EDGE_LAYER_ID,
         type: "line",
         source: SOURCE_ID,
+        minzoom: 15,
         paint: {
           "line-color": "#17251C",
           "line-width": ["interpolate", ["linear"], ["zoom"], 15, 1.5, 18, 4],
-          "line-blur": 2.5,
-          "line-opacity": ["*", ["get", "opacity"], 0.45],
+          "line-blur": 3,
+          "line-opacity": ["*", ["get", "opacity"], 0.35],
         },
       } as maplibregl.LineLayerSpecification,
       beforeId,
     );
 
-    const source = map.getSource(SOURCE_ID) as
-      | maplibregl.GeoJSONSource
-      | undefined;
-
-    if (!source) return;
-
-    const updateShadows = () => {
-      const sun = getCampusSolarPosition(new Date("2026-11-06T12:00:00+05:30"));
-
-      const shadows = createSolarShadowCollection(
-        buildingData,
-        DEMO_TREES,
-        sun,
-      );
-
-      source.setData(shadows as Parameters<typeof source.setData>[0]);
-    };
-
-    // Initial calculation, then refresh once per minute.
-    updateShadows();
-
-    const interval = window.setInterval(updateShadows, 60_000);
-
-    // Refresh immediately when returning to the tab.
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        updateShadows();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    console.info("[solar] Live campus shadows enabled.");
-
     return () => {
-      window.clearInterval(interval);
-
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-
       for (const id of [SOFT_EDGE_LAYER_ID, FILL_LAYER_ID]) {
         if (map.getLayer(id)) {
           map.removeLayer(id);
@@ -182,7 +111,27 @@ export function SolarShadowsLayer() {
         map.removeSource(SOURCE_ID);
       }
     };
-  }, [map, buildingData]);
+  }, [map]);
+
+  // Recalculate shadows whenever the slider changes.
+  useEffect(() => {
+    if (!map) return;
+
+    const source = map.getSource(SOURCE_ID) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+
+    if (!source) return;
+
+    const selectedDate = dateAtLocalTime(timeMinutes);
+    const sun = getCampusSolarPosition(selectedDate);
+
+    // Only tree shadows for this pass. Building footprints from the
+    // optimized campus dataset are not reliable enough for shadow geometry.
+    const shadows = createSolarShadowCollection(null, DEMO_TREES, sun);
+
+    source.setData(shadows as Parameters<typeof source.setData>[0]);
+  }, [map, timeMinutes]);
 
   return null;
 }

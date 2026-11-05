@@ -90,6 +90,7 @@ function distanceMeters(a: LonLat, b: LonLat): number {
 
 function createShadeHeatSegments(
   index: ReturnType<typeof buildLineIndex>,
+  timeMinutes: number,
 ): RouteOption["segments"] {
   const SAMPLE_INTERVAL_M = 4;
 
@@ -113,7 +114,9 @@ function createShadeHeatSegments(
       samples.reduce((total, fraction) => {
         const distance = startDist + (endDist - startDist) * fraction;
 
-        return total + treeShadeCoverageAt(index.pointAt(distance));
+        return (
+          total + treeShadeCoverageAt(index.pointAt(distance), timeMinutes)
+        );
       }, 0) / samples.length;
 
     const score = Math.round(BASE_HEAT - coverage * MAX_SHADE_REDUCTION);
@@ -280,6 +283,7 @@ function buildRouteGeometry(
 export async function mockRouteOptions(
   origin: LonLat,
   destination: LonLat,
+  timeMinutes = 12 * 60,
 ): Promise<RouteOption[]> {
   if (distanceMeters(origin, destination) < 1) {
     throw new Error("Origin and destination must be at least 1 metre apart.");
@@ -319,7 +323,7 @@ export async function mockRouteOptions(
       id: `road-${kind}`,
       kind,
       geometry,
-      segments: createShadeHeatSegments(index),
+      segments: createShadeHeatSegments(index, timeMinutes),
       summary: {
         distanceM: Math.round(index.total),
         durationMin: Math.max(1, Math.ceil(index.total / 80)),
