@@ -1,11 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import * as maplibregl from "maplibre-gl";
+import type { Map as MapLibreMap } from "maplibre-gl";
 import { useMap } from "./map-context";
 import { useRoutes } from "@/features/routes/useRoutes";
 import type { RouteKind } from "@/types/routes";
+
 import {
+  annotateBuildingsForRoute,
   createBuildingVisibilityFilter,
   HIDDEN_BUILDING_FILTER,
+  type BuildingFeatureCollection,
 } from "@/lib/map/buildingVisibility";
 
 const SOURCE_ID = "coolroute-campus-building-cells";
@@ -25,33 +29,67 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
   const map = useMap();
   const { data } = useRoutes();
 
+  const [buildingData, setBuildingData] =
+    useState<BuildingFeatureCollection | null>(null);
+
   const selectedRoute =
     data?.find((route) => route.kind === selectedRouteKind) ?? null;
 
+  // Load campus building data once.
   useEffect(() => {
-    if (!map) return;
+    const controller = new AbortController();
 
-    // Remove the previous diagnostic/extrusion layers if present.
-    for (const id of [
-      "coolroute-campus-building-extrusions",
-      ...Object.values(LAYERS),
-    ]) {
-      if (map.getLayer(id)) map.removeLayer(id);
+    async function loadBuildings() {
+      try {
+        const response = await fetch(
+          `${import.meta.env.BASE_URL}data/campus-buildings-optimized.geojson`,
+          { signal: controller.signal },
+        );
+
+        if (!response.ok) {
+          throw new Error("Could not load campus building data.");
+        }
+
+        const collection = (await response.json()) as BuildingFeatureCollection;
+
+        setBuildingData(collection);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error("[buildings] Campus data loading failed:", error);
+        }
+      }
     }
 
-    if (map.getSource(SOURCE_ID)) {
-      map.removeSource(SOURCE_ID);
+    void loadBuildings();
+
+    return () => controller.abort();
+  }, []);
+
+  // Create the map source and layers.
+  useEffect(() => {
+    const mapInstance = map;
+
+    if (!mapInstance || !buildingData) return;
+
+    for (const id of Object.values(LAYERS)) {
+      if (mapInstance.getLayer(id)) {
+        mapInstance.removeLayer(id);
+      }
     }
 
-    map.addSource(SOURCE_ID, {
+    if (mapInstance.getSource(SOURCE_ID)) {
+      mapInstance.removeSource(SOURCE_ID);
+    }
+
+    mapInstance.addSource(SOURCE_ID, {
       type: "geojson",
-      data: `${import.meta.env.BASE_URL}data/campus-buildings-optimized.geojson`,
+      data: buildingData,
       maxzoom: 18,
       buffer: 32,
       tolerance: 0.375,
-    });
+    } as Parameters<typeof mapInstance.addSource>[1]);
 
-    const firstSymbolLayer = map
+    const firstSymbolLayer = mapInstance
       .getStyle()
       .layers.find((layer) => layer.type === "symbol")?.id;
 
@@ -60,7 +98,7 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
     const shadeColorExpression = [
       "interpolate",
       ["linear"],
-      ["to-number", ["get", "height_m"], 4],
+      heightExpression,
       1,
       "#DDE8D6",
       5,
@@ -74,11 +112,12 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
     ];
 
     function addExtrusion(
+      targetMap: MapLibreMap,
       id: string,
       color: string | unknown[],
       opacity: number,
     ) {
-      map.addLayer(
+      targetMap.addLayer(
         {
           id,
           type: "fill-extrusion",
@@ -97,13 +136,11 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
       );
     }
 
-    addExtrusion(LAYERS.obstructing, "#D0DCCF", 0.22);
+    addExtrusion(mapInstance, LAYERS.obstructing, "#D0DCCF", 0.22);
+    addExtrusion(mapInstance, LAYERS.shade, shadeColorExpression, 0.96);
+    addExtrusion(mapInstance, LAYERS.distant, "#252E29", 1);
 
-    addExtrusion(LAYERS.shade, shadeColorExpression, 0.96);
-
-    addExtrusion(LAYERS.distant, "#252E29", 1);
-
-    map.addLayer(
+    mapInstance.addLayer(
       {
         id: LAYERS.outline,
         type: "line",
@@ -129,42 +166,49 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
       firstSymbolLayer,
     );
 
-    console.info("[buildings] Route-aware campus building layers added.");
+    console.info("[buildings] Campus route-aware extrusions added.");
 
     return () => {
       for (const id of Object.values(LAYERS)) {
-        if (map.getLayer(id)) map.removeLayer(id);
+        if (mapInstance.getLayer(id)) {
+          mapInstance.removeLayer(id);
+        }
       }
 
-      if (map.getSource(SOURCE_ID)) {
-        map.removeSource(SOURCE_ID);
+      if (mapInstance.getSource(SOURCE_ID)) {
+        mapInstance.removeSource(SOURCE_ID);
       }
     };
-  }, [map]);
+  }, [map, buildingData]);
 
-  // Reclassify campus polygons whenever the selected route changes.
+  // Reclassify complete building features for the selected route.
   useEffect(() => {
-    if (!map || !selectedRoute) return;
+    const mapInstance = map;
+
+    if (!mapInstance || !buildingData || !selectedRoute) return;
+
+    const source = mapInstance.getSource(SOURCE_ID) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+
+    if (!source) return;
+
+    const classifiedData = annotateBuildingsForRoute(
+      buildingData,
+      selectedRoute.geometry,
+    );
+
+    source.setData(classifiedData as Parameters<typeof source.setData>[0]);
 
     for (const band of ["obstructing", "shade", "distant"] as const) {
-      const layerId =
-        band === "obstructing"
-          ? LAYERS.obstructing
-          : band === "shade"
-            ? LAYERS.shade
-            : LAYERS.distant;
-
-      map.setFilter(
-        layerId,
-        createBuildingVisibilityFilter(selectedRoute.geometry, band),
-      );
+      mapInstance.setFilter(LAYERS[band], createBuildingVisibilityFilter(band));
     }
 
-    map.setFilter(
+    mapInstance.setFilter(
       LAYERS.outline,
-      createBuildingVisibilityFilter(selectedRoute.geometry, "distant"),
+      createBuildingVisibilityFilter("distant"),
     );
-  }, [map, selectedRoute]);
+  }, [map, buildingData, selectedRoute]);
 
   return null;
 }

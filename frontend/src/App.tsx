@@ -19,7 +19,7 @@ export default function App() {
     <div className="flex h-dvh w-full flex-col bg-background text-foreground">
       <main className="relative flex-1 overflow-hidden">
         <MapViewport>
-          <BuildingsLayer selectedRouteKind={selectedRouteKind} />
+          <BuildingsLayer />
           <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
           <TreeShadeLayer />
           <RoadNetworkLayer />
