@@ -3,6 +3,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import * as maplibregl from "maplibre-gl";
 import { INITIAL_CAMERA, MAP_STYLE_URL } from "@/lib/map/config";
 import { MapProvider } from "./map-context";
+import mapLibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
+import { setWorkerUrl } from "maplibre-gl";
+
+setWorkerUrl(mapLibreWorkerUrl);
 
 export function MapViewport({ children }: { children?: ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -44,8 +48,11 @@ export function MapViewport({ children }: { children?: ReactNode }) {
 
   return (
     <MapProvider map={map}>
-      <div ref={containerRef} className="absolute inset-0">
-        {map ? children : null}
+      <div className="absolute inset-0">
+        <div ref={containerRef} className="h-full w-full" />
+        {map && children && (
+          <div className="pointer-events-none absolute inset-0">{children}</div>
+        )}
       </div>
     </MapProvider>
   );
