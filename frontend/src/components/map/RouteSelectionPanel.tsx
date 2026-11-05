@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
 import { useRoutes } from "@/features/routes/useRoutes";
 import { useRouteInputs } from "@/features/routes/route-input-context";
 import { heatBandFor } from "@/features/heat/heatScale";
@@ -34,7 +37,7 @@ function formatDistance(meters: number): string {
 }
 
 function formatDuration(minutes: number): string {
-  return `${Math.max(1, Math.round(minutes))} min walk`;
+  return `${Math.max(1, Math.round(minutes))} min`;
 }
 
 function formatCoordinate(coordinate: LonLat): string {
@@ -47,12 +50,14 @@ function RouteOptionCard({
   onSelect,
   title,
   subtitle,
+  compact,
 }: {
   route: RouteOption;
   selected: boolean;
   onSelect: () => void;
   title: string;
   subtitle: string;
+  compact: boolean;
 }) {
   const heat = averageHeat(route);
   const band = heatBandFor(heat);
@@ -63,7 +68,8 @@ function RouteOptionCard({
       aria-pressed={selected}
       onClick={onSelect}
       className={[
-        "flex min-w-0 flex-col gap-2 rounded-xl border p-3 text-left transition-all",
+        "flex min-w-0 flex-col rounded-xl border text-left transition-all",
+        compact ? "gap-1.5 p-2.5" : "gap-2 p-3",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
         selected
           ? "border-primary bg-primary text-primary-foreground shadow-md"
@@ -71,33 +77,39 @@ function RouteOptionCard({
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase tracking-wide">
+        <span className="text-[11px] font-bold uppercase tracking-wide">
           {title}
         </span>
 
         {selected ? (
-          <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold">
+          <span className="rounded-full bg-white/15 px-2 py-0.5 text-[9px] font-semibold">
             SELECTED
           </span>
         ) : (
-          <span className="text-[10px] opacity-65">SELECT</span>
+          <span className="text-[9px] opacity-60">SELECT</span>
         )}
       </div>
 
-      <p className="text-xs opacity-70">{subtitle}</p>
+      {!compact && <p className="text-xs opacity-70">{subtitle}</p>}
 
-      <div>
-        <p className="text-xl font-bold leading-tight tabular-nums">
+      <div className="flex items-baseline justify-between gap-2">
+        <p
+          className={[
+            "font-bold leading-tight tabular-nums",
+            compact ? "text-lg" : "text-xl",
+          ].join(" ")}
+        >
           {formatDistance(route.summary.distanceM)}
         </p>
-        <p className="mt-0.5 text-xs opacity-75">
-          {formatDuration(route.summary.durationMin)}
-        </p>
+
+        <span className="text-[10px] opacity-75">
+          {formatDuration(route.summary.durationMin)} walk
+        </span>
       </div>
 
-      <div className="flex items-center gap-2 text-xs">
+      <div className="flex items-center gap-2 text-[10px]">
         <span
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          className="h-2 w-2 shrink-0 rounded-full"
           style={{ backgroundColor: band.color }}
         />
         <span>{band.label}</span>
@@ -111,6 +123,8 @@ export function RouteSelectionPanel({
   selectedRouteKind,
   onSelectRoute,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
+
   const {
     origin,
     destination,
@@ -123,90 +137,136 @@ export function RouteSelectionPanel({
   const { data, isLoading, isFetching, isError, error, refetch } = useRoutes();
 
   const fastest = data?.find((route) => route.kind === "fastest");
+
   const recommended = data?.find((route) => route.kind === "weighted");
+
   const selectedRoute = data?.find((route) => route.kind === selectedRouteKind);
 
-  function pickButton(mode: "origin" | "destination", label: string) {
-    const active = selectionMode === mode;
-
-    return (
-      <button
-        type="button"
-        onClick={() => setSelectionMode(active ? null : mode)}
-        className={[
-          "mt-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors",
-          active
-            ? "bg-primary text-primary-foreground"
-            : "bg-secondary text-secondary-foreground hover:bg-primary/10",
-        ].join(" ")}
-      >
-        {active ? "Cancel" : label}
-      </button>
-    );
+  function pickLocation(mode: "origin" | "destination") {
+    setExpanded(true);
+    setSelectionMode(selectionMode === mode ? null : mode);
   }
 
   return (
-    <section className="pointer-events-auto absolute bottom-4 left-1/2 z-20 max-h-[min(82dvh,760px)] w-[min(94vw,760px)] -translate-x-1/2 overflow-y-auto rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
-      <div className="mb-3 flex items-center justify-between gap-3 px-1">
-        <div>
+    <section
+      className={[
+        "pointer-events-auto absolute bottom-3 left-1/2 z-20",
+        "w-[min(94vw,680px)] -translate-x-1/2",
+        "rounded-2xl border border-border bg-card/95 p-2.5 shadow-xl backdrop-blur-md sm:p-3",
+        "transition-[max-height] duration-300 ease-out",
+        expanded
+          ? "max-h-[min(78dvh,760px)] overflow-y-auto"
+          : "overflow-hidden",
+      ].join(" ")}
+    >
+      {/* Panel header / expand control */}
+      <div className="mb-2 flex items-center justify-between gap-3 px-1">
+        <div className="min-w-0">
           <p className="text-sm font-bold text-card-foreground">
-            Plan your route
+            {expanded ? "Plan your route" : "Your route"}
           </p>
-          <p className="text-[11px] text-muted-foreground">
-            Choose your campus start and destination
+
+          <p className="truncate text-[10px] text-muted-foreground">
+            {expanded
+              ? "Choose your campus start and destination"
+              : selectedRoute
+                ? `${selectedRoute.kind === "weighted" ? "Recommended" : "Fastest"} · ${formatDistance(selectedRoute.summary.distanceM)} · ${formatDuration(selectedRoute.summary.durationMin)} walk`
+                : "Campus walking routes"}
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={resetEndpoints}
-          className="text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-        >
-          Reset
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {expanded && (
+            <button
+              type="button"
+              onClick={resetEndpoints}
+              className="text-[10px] font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Reset
+            </button>
+          )}
+
+          <button
+            type="button"
+            aria-expanded={expanded}
+            onClick={() => setExpanded((value) => !value)}
+            className="flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-[10px] font-semibold text-secondary-foreground transition-colors hover:bg-primary/10"
+          >
+            {expanded ? "Collapse" : "Stops & details"}
+            {expanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronUp className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Origin and destination controls */}
-      <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-            <span className="mr-1 text-emerald-600">●</span>
-            Origin
-          </p>
+      {expanded && (
+        <div className="mb-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              <span className="mr-1 text-emerald-600">●</span>
+              Origin
+            </p>
 
-          <p className="mt-1 truncate text-xs font-semibold tabular-nums">
-            {formatCoordinate(origin)}
-          </p>
+            <p className="mt-1 truncate text-xs font-semibold tabular-nums">
+              {formatCoordinate(origin)}
+            </p>
 
-          {pickButton("origin", "Pick on map")}
+            <button
+              type="button"
+              onClick={() => pickLocation("origin")}
+              className={[
+                "mt-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors",
+                selectionMode === "origin"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground hover:bg-primary/10",
+              ].join(" ")}
+            >
+              {selectionMode === "origin" ? "Cancel" : "Pick on map"}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={swapEndpoints}
+            title="Swap origin and destination"
+            aria-label="Swap origin and destination"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-lg text-foreground transition-colors hover:bg-secondary"
+          >
+            ⇄
+          </button>
+
+          <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              <span className="mr-1 text-amber-500">●</span>
+              Destination
+            </p>
+
+            <p className="mt-1 truncate text-xs font-semibold tabular-nums">
+              {formatCoordinate(destination)}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => pickLocation("destination")}
+              className={[
+                "mt-1 rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors",
+                selectionMode === "destination"
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-secondary text-secondary-foreground hover:bg-primary/10",
+              ].join(" ")}
+            >
+              {selectionMode === "destination" ? "Cancel" : "Pick on map"}
+            </button>
+          </div>
         </div>
-
-        <button
-          type="button"
-          onClick={swapEndpoints}
-          title="Swap origin and destination"
-          aria-label="Swap origin and destination"
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-background text-lg text-foreground transition-colors hover:bg-secondary"
-        >
-          ⇄
-        </button>
-
-        <div className="min-w-0 rounded-xl border border-border bg-background/70 p-2.5">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-            <span className="mr-1 text-amber-500">●</span>
-            Destination
-          </p>
-
-          <p className="mt-1 truncate text-xs font-semibold tabular-nums">
-            {formatCoordinate(destination)}
-          </p>
-
-          {pickButton("destination", "Pick on map")}
-        </div>
-      </div>
+      )}
 
       {isFetching && (
-        <p className="mb-2 px-1 text-[11px] text-muted-foreground">
+        <p className="mb-2 px-1 text-[10px] text-muted-foreground">
           Recalculating campus routes…
         </p>
       )}
@@ -214,7 +274,7 @@ export function RouteSelectionPanel({
       {isError && (
         <div
           role="alert"
-          className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3"
+          className="mb-2 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-3"
         >
           <p className="text-xs text-destructive">
             {error instanceof Error
@@ -240,6 +300,7 @@ export function RouteSelectionPanel({
 
       {fastest && recommended && selectedRoute && (
         <>
+          {/* Route choices */}
           <div className="grid grid-cols-2 gap-2">
             <RouteOptionCard
               route={fastest}
@@ -247,6 +308,7 @@ export function RouteSelectionPanel({
               onSelect={() => onSelectRoute("fastest")}
               title="Fastest"
               subtitle="Shortest walking distance"
+              compact={!expanded}
             />
 
             <RouteOptionCard
@@ -255,10 +317,13 @@ export function RouteSelectionPanel({
               onSelect={() => onSelectRoute("weighted")}
               title="Recommended"
               subtitle="Alternative, shade-aware route"
+              compact={!expanded}
             />
           </div>
 
-          <RouteInsights route={selectedRoute} />
+          {/* Compact metrics always stay visible.
+              Detailed breakdown appears when expanded. */}
+          <RouteInsights route={selectedRoute} expanded={expanded} />
         </>
       )}
     </section>
