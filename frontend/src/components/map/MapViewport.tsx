@@ -33,13 +33,30 @@ export function MapViewport({ children }: { children?: ReactNode }) {
     );
 
     mapRef.current = instance;
-    instance.on("load", () => setMap(instance));
+    instance.on("load", () => {
+      for (const shieldId of [
+        "highway-shield-non-us",
+        "highway-shield-us-interstate",
+        "road-shield-us",
+      ]) {
+        if (instance.getLayer(shieldId)) instance.removeLayer(shieldId);
+      }
+
+      if (import.meta.env.DEV) {
+        (window as unknown as { __map?: typeof instance }).__map = instance;
+      }
+
+      setMap(instance);
+    });
 
     const observer = new ResizeObserver(() => instance.resize());
     observer.observe(container);
 
     return () => {
       observer.disconnect();
+      if (import.meta.env.DEV) {
+        delete (window as unknown as { __map?: unknown }).__map;
+      }
       instance.remove();
       mapRef.current = null;
       setMap(null);
