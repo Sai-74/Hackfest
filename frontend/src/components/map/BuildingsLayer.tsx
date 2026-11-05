@@ -19,20 +19,52 @@ export function BuildingsLayer() {
     }
     if (map.getLayer(BUILDINGS_EXTRUSION_LAYER_ID)) return;
 
-    map.addLayer({
-      id: BUILDINGS_EXTRUSION_LAYER_ID,
-      type: "fill-extrusion",
-      source: MAP_TILES_SOURCE_ID,
-      "source-layer": BUILDING_SOURCE_LAYER,
-      minzoom: 14,
-      paint: {
-        "fill-extrusion-color": "#D9E4D6",
-        "fill-extrusion-height": ["coalesce", ["get", "render_height"], 6],
-        "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
-        "fill-extrusion-opacity": 0.9,
-        "fill-extrusion-vertical-gradient": false,
+    const styleLayers = map.getStyle().layers;
+
+    const firstSymbolLayer = styleLayers.find(
+      (layer) => layer.type === "symbol",
+    );
+    map.addLayer(
+      {
+        id: BUILDINGS_EXTRUSION_LAYER_ID,
+        type: "fill-extrusion",
+        source: MAP_TILES_SOURCE_ID,
+        "source-layer": BUILDING_SOURCE_LAYER,
+        minzoom: 14,
+
+        filter: ["!=", ["get", "hide_3d"], true],
+
+        paint: {
+          "fill-extrusion-color": "#C2CEC3",
+
+          "fill-extrusion-height": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            14,
+            0,
+            15,
+            ["coalesce", ["get", "render_height"], 6],
+          ],
+
+          "fill-extrusion-base": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            14,
+            0,
+            15,
+            ["coalesce", ["get", "render_min_height"], 0],
+          ],
+
+          "fill-extrusion-opacity": 0.95,
+          "fill-extrusion-vertical-gradient": true,
+        },
       },
-    });
+      firstSymbolLayer?.id,
+    );
+
+    console.info("[buildings] 3D building layer added.");
 
     return () => {
       if (map.getLayer(BUILDINGS_EXTRUSION_LAYER_ID)) {

@@ -20,8 +20,8 @@ export function MapViewport({ children }: { children?: ReactNode }) {
     const instance = new maplibregl.Map({
       container,
       style: MAP_STYLE_URL,
-      center: [0, 0],
-      zoom: 1,
+      center: INITIAL_CAMERA.center,
+      zoom: INITIAL_CAMERA.zoom,
       pitch: INITIAL_CAMERA.pitch,
       bearing: INITIAL_CAMERA.bearing,
       attributionControl: { compact: true },

@@ -1,5 +1,5 @@
-import { MapLibreMap } from "maplibre-gl";
-import React, { createContext, useContext } from "react";
+import { type Map as MapLibreMap } from "maplibre-gl";
+import { createContext, useContext, type ReactNode } from "react";
 
 const MapContext = createContext<MapLibreMap | null>(null);
 
@@ -8,7 +8,7 @@ export function MapProvider({
   children,
 }: {
   map: MapLibreMap | null;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return <MapContext.Provider value={map}>{children}</MapContext.Provider>;
 }
