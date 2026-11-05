@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import type { ExpressionSpecification } from "maplibre-gl";
+
 import { useMap } from "./map-context";
 import { DEMO_TREES, type DemoTree } from "@/services/mock/demoTrees";
 import type { LonLat } from "@/types/routes";
@@ -7,7 +9,10 @@ const TREE_SOURCE = "coolroute-tree-models";
 const TREE_LAYER = "coolroute-tree-extrusions";
 
 const SHADE_SOURCE = "coolroute-tree-shade";
-const SHADE_LAYER = "coolroute-tree-shade-polygons";
+const SHADE_OUTER_LAYER = "coolroute-tree-shade-soft";
+const SHADE_CORE_LAYER = "coolroute-tree-shade-core";
+
+const LEGACY_SHADE_LAYER = "coolroute-tree-shade-polygons";
 
 interface TreePolygonFeature {
   type: "Feature";
@@ -25,15 +30,16 @@ interface TreePolygonFeature {
   };
 }
 
-interface ShadePolygonFeature {
+interface ShadePointFeature {
   type: "Feature";
   id: string;
   properties: {
+    radius_m: number;
     opacity: number;
   };
   geometry: {
-    type: "Polygon";
-    coordinates: LonLat[][];
+    type: "Point";
+    coordinates: LonLat;
   };
 }
 
@@ -113,7 +119,7 @@ function createTreeFeatures(): TreePolygonFeature[] {
       // Trunk
       createTreeFeature(tree, "trunk", 0.34, 0, trunkHeight, "#806A50", 4, 45),
 
-      // Broad lower canopy
+      // Lower canopy
       createTreeFeature(
         tree,
         "lower-canopy",
@@ -136,7 +142,7 @@ function createTreeFeatures(): TreePolygonFeature[] {
         12,
       ),
 
-      // Small crown at the top
+      // Top crown
       createTreeFeature(
         tree,
         "top-canopy",
@@ -153,52 +159,19 @@ function createTreeFeatures(): TreePolygonFeature[] {
   return features;
 }
 
-function createShadeFeatures(): ShadePolygonFeature[] {
-  const features: ShadePolygonFeature[] = [];
-
-  for (const tree of DEMO_TREES) {
-    // Wide, faint edge of the shade patch.
-    features.push({
-      type: "Feature",
-      id: `${tree.id}-shade-outer`,
-      properties: {
-        opacity: 0.045,
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          polygonRing(
-            tree.shadeCenter,
-            tree.shadeRadiusM * 1.45,
-            16,
-            tree.rotationDeg,
-          ),
-        ],
-      },
-    });
-
-    // Darker centre of the shaded road patch.
-    features.push({
-      type: "Feature",
-      id: `${tree.id}-shade-inner`,
-      properties: {
-        opacity: 0.13,
-      },
-      geometry: {
-        type: "Polygon",
-        coordinates: [
-          polygonRing(
-            tree.shadeCenter,
-            tree.shadeRadiusM,
-            16,
-            tree.rotationDeg,
-          ),
-        ],
-      },
-    });
-  }
-
-  return features;
+function createShadeFeatures(): ShadePointFeature[] {
+  return DEMO_TREES.map((tree) => ({
+    type: "Feature",
+    id: `${tree.id}-shade`,
+    properties: {
+      radius_m: tree.shadeRadiusM,
+      opacity: 0.28,
+    },
+    geometry: {
+      type: "Point",
+      coordinates: tree.shadeCenter,
+    },
+  }));
 }
 
 export function TreeShadeLayer() {
@@ -207,18 +180,31 @@ export function TreeShadeLayer() {
   useEffect(() => {
     if (!map) return;
 
-    // Clean up existing layers during hot reload or effect replay.
-    for (const id of [TREE_LAYER, SHADE_LAYER]) {
-      if (map.getLayer(id)) map.removeLayer(id);
+    // Clean up existing layers, including the previous polygon implementation.
+    for (const id of [
+      TREE_LAYER,
+      SHADE_CORE_LAYER,
+      SHADE_OUTER_LAYER,
+      LEGACY_SHADE_LAYER,
+    ]) {
+      if (map.getLayer(id)) {
+        map.removeLayer(id);
+      }
     }
 
     for (const id of [TREE_SOURCE, SHADE_SOURCE]) {
-      if (map.getSource(id)) map.removeSource(id);
+      if (map.getSource(id)) {
+        map.removeSource(id);
+      }
     }
 
     const firstSymbolLayer = map
       .getStyle()
       .layers.find((layer) => layer.type === "symbol")?.id;
+
+    // --------------------------------------------------
+    // SHADE SOURCE
+    // --------------------------------------------------
 
     map.addSource(SHADE_SOURCE, {
       type: "geojson",
@@ -226,25 +212,80 @@ export function TreeShadeLayer() {
         type: "FeatureCollection",
         features: createShadeFeatures(),
       },
-      maxzoom: 18,
-      buffer: 32,
-      tolerance: 0.1,
     });
 
+    // Zoom-dependent ground radius in screen pixels.
+    // Outer radius creates the broad feathered shadow.
+    const outerRadius: ExpressionSpecification = [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      ["*", ["get", "radius_m"], 0.34],
+      16,
+      ["*", ["get", "radius_m"], 1.35],
+      18,
+      ["*", ["get", "radius_m"], 5.39],
+      20,
+      ["*", ["get", "radius_m"], 21.55],
+    ];
+
+    // Smaller core preserves some visual depth.
+    const coreRadius: ExpressionSpecification = [
+      "interpolate",
+      ["linear"],
+      ["zoom"],
+      14,
+      ["*", ["get", "radius_m"], 0.19],
+      16,
+      ["*", ["get", "radius_m"], 0.76],
+      18,
+      ["*", ["get", "radius_m"], 3.4],
+      20,
+      ["*", ["get", "radius_m"], 13.62],
+    ];
+
+    // Broad, very soft outer shadow.
     map.addLayer(
       {
-        id: SHADE_LAYER,
-        type: "fill",
+        id: SHADE_OUTER_LAYER,
+        type: "circle",
         source: SHADE_SOURCE,
         minzoom: 15,
         paint: {
-          "fill-color": "#354B3A",
-          "fill-opacity": ["get", "opacity"],
-          "fill-antialias": true,
+          "circle-radius": outerRadius,
+          "circle-color": "#293A2F",
+          "circle-opacity": ["*", ["get", "opacity"], 0.75],
+          "circle-blur": 0.95,
+          "circle-pitch-alignment": "map",
+          "circle-pitch-scale": "map",
         },
       },
       firstSymbolLayer,
     );
+
+    // Slightly denser but still feathered centre.
+    map.addLayer(
+      {
+        id: SHADE_CORE_LAYER,
+        type: "circle",
+        source: SHADE_SOURCE,
+        minzoom: 15,
+        paint: {
+          "circle-radius": coreRadius,
+          "circle-color": "#293A2F",
+          "circle-opacity": ["*", ["get", "opacity"], 0.95],
+          "circle-blur": 0.88,
+          "circle-pitch-alignment": "map",
+          "circle-pitch-scale": "map",
+        },
+      },
+      firstSymbolLayer,
+    );
+
+    // --------------------------------------------------
+    // TREE SOURCE
+    // --------------------------------------------------
 
     map.addSource(TREE_SOURCE, {
       type: "geojson",
@@ -263,7 +304,6 @@ export function TreeShadeLayer() {
         type: "fill-extrusion",
         source: TREE_SOURCE,
         minzoom: 15,
-
         paint: {
           "fill-extrusion-height": ["get", "height_m"],
           "fill-extrusion-base": ["get", "base_m"],
@@ -276,16 +316,20 @@ export function TreeShadeLayer() {
     );
 
     console.info(
-      `[trees] ${DEMO_TREES.length} low-poly trees and shade patches added.`,
+      `[trees] ${DEMO_TREES.length} low-poly trees and soft shade patches added.`,
     );
 
     return () => {
-      for (const id of [TREE_LAYER, SHADE_LAYER]) {
-        if (map.getLayer(id)) map.removeLayer(id);
+      for (const id of [TREE_LAYER, SHADE_CORE_LAYER, SHADE_OUTER_LAYER]) {
+        if (map.getLayer(id)) {
+          map.removeLayer(id);
+        }
       }
 
       for (const id of [TREE_SOURCE, SHADE_SOURCE]) {
-        if (map.getSource(id)) map.removeSource(id);
+        if (map.getSource(id)) {
+          map.removeSource(id);
+        }
       }
     };
   }, [map]);
