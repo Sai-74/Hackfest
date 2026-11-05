@@ -1,6 +1,7 @@
 import { useRoutes } from "@/features/routes/useRoutes";
 import { useRouteInputs } from "@/features/routes/route-input-context";
 import { heatBandFor } from "@/features/heat/heatScale";
+import { RouteInsights } from "./RouteInsights";
 
 import type { LonLat, RouteKind, RouteOption } from "@/types/routes";
 
@@ -122,8 +123,8 @@ export function RouteSelectionPanel({
   const { data, isLoading, isFetching, isError, error, refetch } = useRoutes();
 
   const fastest = data?.find((route) => route.kind === "fastest");
-
   const recommended = data?.find((route) => route.kind === "weighted");
+  const selectedRoute = data?.find((route) => route.kind === selectedRouteKind);
 
   function pickButton(mode: "origin" | "destination", label: string) {
     const active = selectionMode === mode;
@@ -145,7 +146,7 @@ export function RouteSelectionPanel({
   }
 
   return (
-    <section className="pointer-events-auto absolute bottom-4 left-1/2 z-20 w-[min(94vw,680px)] -translate-x-1/2 rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
+    <section className="pointer-events-auto absolute bottom-4 left-1/2 z-20 max-h-[min(82dvh,760px)] w-[min(94vw,760px)] -translate-x-1/2 overflow-y-auto rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur-md">
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
         <div>
           <p className="text-sm font-bold text-card-foreground">
@@ -237,7 +238,7 @@ export function RouteSelectionPanel({
         </div>
       )}
 
-      {fastest && recommended && (
+      {fastest && recommended && selectedRoute && (
         <>
           <div className="grid grid-cols-2 gap-2">
             <RouteOptionCard
@@ -257,9 +258,7 @@ export function RouteSelectionPanel({
             />
           </div>
 
-          <p className="mt-2 px-1 text-[10px] text-muted-foreground">
-            Environmental scores are synthetic demo estimates.
-          </p>
+          <RouteInsights route={selectedRoute} />
         </>
       )}
     </section>

@@ -1,6 +1,6 @@
 import { buildLineIndex } from "@/lib/map/lineMath";
 import type { LonLat, RouteOption, RouteKind } from "@/types/routes";
-import { DEMO_TREES } from "@/services/mock/demoTrees";
+import { treeShadeCoverageAt } from "@/features/shade/treeShade";
 
 interface NodeFeature {
   properties: {
@@ -88,27 +88,6 @@ function distanceMeters(a: LonLat, b: LonLat): number {
   return Math.hypot(dx, dy);
 }
 
-function shadeCoverageAt(point: LonLat): number {
-  let unshaded = 1;
-
-  for (const tree of DEMO_TREES) {
-    const distance = distanceMeters(point, tree.shadeCenter);
-
-    if (distance >= tree.shadeRadiusM) continue;
-
-    const normalized = distance / tree.shadeRadiusM;
-
-    // Smooth radial influence: strongest under the canopy,
-    // fading towards the edge of the shade area.
-    const influence = (1 + Math.cos(Math.PI * normalized)) / 2;
-
-    // Combine overlapping tree shade without exceeding 100%.
-    unshaded *= 1 - influence;
-  }
-
-  return 1 - unshaded;
-}
-
 function createShadeHeatSegments(
   index: ReturnType<typeof buildLineIndex>,
 ): RouteOption["segments"] {
@@ -134,7 +113,7 @@ function createShadeHeatSegments(
       samples.reduce((total, fraction) => {
         const distance = startDist + (endDist - startDist) * fraction;
 
-        return total + shadeCoverageAt(index.pointAt(distance));
+        return total + treeShadeCoverageAt(index.pointAt(distance));
       }, 0) / samples.length;
 
     const score = Math.round(BASE_HEAT - coverage * MAX_SHADE_REDUCTION);
