@@ -24,6 +24,7 @@ export function BuildingsLayer() {
     const firstSymbolLayer = styleLayers.find(
       (layer) => layer.type === "symbol",
     );
+
     map.addLayer(
       {
         id: BUILDINGS_EXTRUSION_LAYER_ID,

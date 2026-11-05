@@ -1,3 +1,9 @@
 export const MAP_TILES_SOURCE_ID = "openmaptiles";
 export const BUILDING_SOURCE_LAYER = "building";
 export const BUILDINGS_EXTRUSION_LAYER_ID = "coolroute-buildings-extrusion";
+export const FASTEST_SOURCE_ID = "coolroute-fastest-source";
+export const FASTEST_LAYER_ID = "coolroute-fastest-line";
+export const WEIGHTED_SOURCE_ID = "coolroute-weighted-source";
+export const WEIGHTED_BASE_LAYER_ID = "coolroute-weighted-base";
+export const CHEVRON_SOURCE_ID = "coolroute-chevron-source";
+export const CHEVRON_LAYER_ID = "coolroute-chevron-symbols";

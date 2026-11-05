@@ -6,3 +6,5 @@ export const INITIAL_CAMERA = {
 } as const;
 
 export const MAP_STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
+export const DEMO_ORIGIN: [number, number] = [85.89374, 20.463125];
+export const DEMO_DESTINATION: [number, number] = [85.896606, 20.463149];
