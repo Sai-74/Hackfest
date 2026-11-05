@@ -24,6 +24,8 @@ export function MapViewport({ children }: { children?: ReactNode }) {
       zoom: INITIAL_CAMERA.zoom,
       pitch: INITIAL_CAMERA.pitch,
       bearing: INITIAL_CAMERA.bearing,
+      maxZoom: 20,
+      zoomLevelsToOverscale: 1,
       attributionControl: { compact: true },
     });
 
