@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import * as maplibregl from "maplibre-gl";
 import { useMap } from "./map-context";
 import { useRoutes } from "@/features/routes/useRoutes";
+import type { RouteKind } from "@/types/routes";
 
 const SOURCE_ID = "coolroute-route-waypoints";
 const LAYER_ID = "coolroute-route-waypoint-circles";
@@ -11,11 +12,15 @@ const EMPTY_FC = {
   features: [],
 };
 
-export function RouteWaypointsLayer() {
+export function RouteWaypointsLayer({
+  selectedRouteKind,
+}: {
+  selectedRouteKind: RouteKind;
+}) {
   const map = useMap();
   const { data } = useRoutes();
 
-  const route = data?.find((r) => r.kind === "weighted") ?? data?.[0] ?? null;
+  const route = data?.find((r) => r.kind === selectedRouteKind) ?? null;
 
   useEffect(() => {
     if (!map) return;

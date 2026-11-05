@@ -1,6 +1,6 @@
 import { DEMO_DESTINATION, DEMO_ORIGIN } from "@/lib/map/config";
 import { buildLineIndex } from "@/lib/map/lineMath";
-import type { LonLat, RouteOption } from "@/types/routes";
+import type { LonLat, RouteOption, RouteKind } from "@/types/routes";
 import { DEMO_TREES } from "@/services/mock/demoTrees";
 
 interface NodeFeature {
@@ -163,6 +163,7 @@ function shortestPath(
   graph: Map<number, GraphEdge[]>,
   start: number,
   destination: number,
+  avoidDirectEdge = false,
 ): GraphEdge[] {
   const distances = new Map<number, number>();
   const previous = new Map<number, PreviousEdge>();
@@ -194,6 +195,9 @@ function shortestPath(
     unvisited.delete(current);
 
     for (const edge of graph.get(current) ?? []) {
+      if (avoidDirectEdge && current === start && edge.to === destination) {
+        continue;
+      }
       if (!unvisited.has(edge.to)) continue;
 
       const candidate = bestDistance + edge.length;
@@ -268,7 +272,6 @@ export async function mockRouteOptions(): Promise<RouteOption[]> {
   }
 
   const nodes = (await nodesResponse.json()) as FeatureCollection<NodeFeature>;
-
   const edges = (await edgesResponse.json()) as FeatureCollection<EdgeFeature>;
 
   const originNode = nearestNode(DEMO_ORIGIN, nodes.features);
@@ -276,41 +279,38 @@ export async function mockRouteOptions(): Promise<RouteOption[]> {
 
   const graph = buildGraph(nodes.features, edges.features);
 
-  const path = shortestPath(
-    graph,
-    originNode.properties.osmid,
-    destinationNode.properties.osmid,
-  );
+  const start = originNode.properties.osmid;
+  const destination = destinationNode.properties.osmid;
 
-  const geometry = buildRouteGeometry(DEMO_ORIGIN, DEMO_DESTINATION, path);
+  // Fastest: shortest-distance route.
+  const fastestPath = shortestPath(graph, start, destination);
 
-  const index = buildLineIndex(geometry);
+  // Recommended: alternative route that avoids the direct edge.
+  const recommendedPath = shortestPath(graph, start, destination, true);
 
-  if (!Number.isFinite(index.total) || index.total <= 0) {
-    throw new Error("Generated road route has invalid geometry.");
+  function createRoute(kind: RouteKind, path: GraphEdge[]): RouteOption {
+    const geometry = buildRouteGeometry(DEMO_ORIGIN, DEMO_DESTINATION, path);
+
+    const index = buildLineIndex(geometry);
+
+    if (!Number.isFinite(index.total) || index.total <= 0) {
+      throw new Error(`Generated ${kind} route has invalid geometry.`);
+    }
+
+    return {
+      id: `road-${kind}`,
+      kind,
+      geometry,
+      segments: createShadeHeatSegments(index),
+      summary: {
+        distanceM: Math.round(index.total),
+        durationMin: Math.max(1, Math.ceil(index.total / 80)),
+      },
+    };
   }
 
-  const segments = createShadeHeatSegments(index);
-
-  const shared = {
-    geometry,
-    segments,
-    summary: {
-      distanceM: Math.round(index.total),
-      durationMin: Math.max(1, Math.ceil(index.total / 80)),
-    },
-  };
-
   return [
-    {
-      ...shared,
-      id: "road-fastest",
-      kind: "fastest",
-    },
-    {
-      ...shared,
-      id: "road-weighted",
-      kind: "weighted",
-    },
+    createRoute("fastest", fastestPath),
+    createRoute("weighted", recommendedPath),
   ];
 }

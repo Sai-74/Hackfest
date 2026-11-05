@@ -13,7 +13,7 @@ import {
   WEIGHTED_BASE_LAYER_ID,
   WEIGHTED_SOURCE_ID,
 } from "@/lib/map/layers";
-import type { RouteOption } from "@/types/routes";
+import type { RouteOption, RouteKind } from "@/types/routes";
 
 const CHEVRON_SPACING_PX = 22;
 const CHEVRON_SAMPLE_STEP_M = 0.5;
@@ -158,13 +158,19 @@ function hasSameGeometry(
   );
 }
 
-export function RoutesLayer() {
+export function RoutesLayer({
+  selectedRouteKind,
+}: {
+  selectedRouteKind: RouteKind;
+}) {
   const map = useMap();
   const { data } = useRoutes();
   const fitted = useRef(false);
 
-  const weighted = data?.find((r) => r.kind === "weighted") ?? null;
-  const fastest = data?.find((r) => r.kind === "fastest") ?? null;
+  const selectedRoute =
+    data?.find((route) => route.kind === selectedRouteKind) ?? null;
+  const alternateRoute =
+    data?.find((route) => route.kind !== selectedRouteKind) ?? null;
 
   useEffect(() => {
     if (!map) return;
@@ -257,67 +263,74 @@ export function RoutesLayer() {
   }, [map]);
 
   useEffect(() => {
-    if (!map || !weighted || !fastest) return;
-    const fastestOverlapsWeighted = hasSameGeometry(
-      fastest.geometry,
-      weighted.geometry,
+    if (!map || !selectedRoute || !alternateRoute) return;
+
+    const alternateOverlapsSelected = hasSameGeometry(
+      selectedRoute.geometry,
+      alternateRoute.geometry,
     );
-    const fastestSource = map.getSource(FASTEST_SOURCE_ID) as
+
+    const alternateSource = map.getSource(FASTEST_SOURCE_ID) as
       | maplibregl.GeoJSONSource
       | undefined;
-    fastestSource?.setData(
-      fastestOverlapsWeighted
+
+    alternateSource?.setData(
+      alternateOverlapsSelected
         ? EMPTY_FC
         : {
             type: "Feature",
             properties: {},
             geometry: {
               type: "LineString",
-              coordinates: fastest.geometry,
+              coordinates: alternateRoute.geometry,
             },
           },
     );
 
-    (
-      map.getSource(WEIGHTED_SOURCE_ID) as maplibregl.GeoJSONSource | undefined
-    )?.setData({
+    const selectedSource = map.getSource(WEIGHTED_SOURCE_ID) as
+      | maplibregl.GeoJSONSource
+      | undefined;
+
+    selectedSource?.setData({
       type: "Feature",
       properties: {},
       geometry: {
         type: "LineString",
-        coordinates: weighted.geometry,
+        coordinates: selectedRoute.geometry,
       },
     });
 
     if (!fitted.current) {
       fitted.current = true;
+
       const bounds = new maplibregl.LngLatBounds(
-        weighted.geometry[0],
-        weighted.geometry[0],
+        selectedRoute.geometry[0],
+        selectedRoute.geometry[0],
       );
-      for (const c of weighted.geometry) {
-        bounds.extend(c);
+
+      for (const coordinate of selectedRoute.geometry) {
+        bounds.extend(coordinate);
       }
 
       map.fitBounds(bounds, {
-        padding: { top: 90, bottom: 150, left: 60, right: 60 },
+        padding: { top: 90, bottom: 190, left: 60, right: 60 },
         pitch: INITIAL_CAMERA.pitch,
         bearing: INITIAL_CAMERA.bearing,
         maxZoom: 17.5,
         duration: 1400,
       });
     }
-  }, [map, weighted, fastest]);
+  }, [map, selectedRoute, alternateRoute]);
 
   useEffect(() => {
-    if (!map || !weighted) return;
+    if (!map || !selectedRoute) return;
     const source = map.getSource(CHEVRON_SOURCE_ID) as
       | maplibregl.GeoJSONSource
       | undefined;
-    if (!source || weighted.geometry.length < 2) return;
-    const index = buildLineIndex(weighted.geometry);
+    if (!source || selectedRoute.geometry.length < 2) return;
+    const index = buildLineIndex(selectedRoute.geometry);
     if (!Number.isFinite(index.total) || index.total <= 0) return;
-    let featureData = chevronFeatures(weighted, index, map);
+    let featureData = chevronFeatures(selectedRoute, index, map);
     source.setData(featureData.featureCollection);
     let raf = 0;
     let lastFrame = 0;
@@ -329,7 +342,7 @@ export function RoutesLayer() {
       }
 
       activeIds.clear();
-      featureData = chevronFeatures(weighted, index, map);
+      featureData = chevronFeatures(selectedRoute, index, map);
       source.setData(featureData.featureCollection);
     };
 
@@ -389,7 +402,7 @@ export function RoutesLayer() {
         map.setFeatureState({ source: CHEVRON_SOURCE_ID, id }, { pulse: 0 });
       }
     };
-  }, [map, weighted]);
+  }, [map, selectedRoute]);
 
   return null;
 }
