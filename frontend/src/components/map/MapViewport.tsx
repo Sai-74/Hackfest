@@ -26,6 +26,8 @@ export function MapViewport({ children }: { children?: ReactNode }) {
       bearing: INITIAL_CAMERA.bearing,
       maxZoom: 20,
       zoomLevelsToOverscale: 1,
+      maxTileCacheSize: 64,
+      maxTileCacheZoomLevels: 2,
       attributionControl: { compact: true },
     });
 
