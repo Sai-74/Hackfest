@@ -4,7 +4,7 @@ import { fetchRouteOptions } from "@/services/routes";
 export function useRoutes() {
   return useQuery({
     queryKey: ["route-options"],
-    queryFn: fetchRouteOptions,
+    queryFn: ({ signal }) => fetchRouteOptions(signal),
     staleTime: Infinity,
   });
 }
