@@ -5,6 +5,7 @@ import { MapViewport } from "@/components/map/MapViewport";
 import { CampusBuildingCellsLayer } from "./components/map/CampusBuildingCellsLayer";
 import { RoadNetworkLayer } from "./components/map/RoadNetworkLayer";
 import { RouteWaypointsLayer } from "./components/map/RouteWaypointsLayer";
+import { TreeShadeLayer } from "./components/map/TreeShadeLayer";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <MapViewport>
           <BuildingsLayer />
           <CampusBuildingCellsLayer />
+          <TreeShadeLayer />
           <RoadNetworkLayer />
           <RoutesLayer />
           <RouteWaypointsLayer />
