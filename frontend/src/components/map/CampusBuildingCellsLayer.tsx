@@ -196,7 +196,7 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
     };
   }, [map, buildingData]);
 
-  // Reclassify complete building features for the selected route.
+  // Reclassify buildings whenever the route or camera orientation changes.
   useEffect(() => {
     const mapInstance = map;
 
@@ -208,21 +208,51 @@ export function CampusBuildingCellsLayer({ selectedRouteKind }: Props) {
 
     if (!source) return;
 
-    const classifiedData = annotateBuildingsForRoute(
-      buildingData,
-      selectedRoute.geometry,
-    );
+    let lastCameraKey = "";
 
-    source.setData(classifiedData as Parameters<typeof source.setData>[0]);
+    const updateOcclusion = () => {
+      const bearing = mapInstance.getBearing();
+      const pitch = mapInstance.getPitch();
 
-    for (const band of ["obstructing", "shade", "distant"] as const) {
-      mapInstance.setFilter(LAYERS[band], createBuildingVisibilityFilter(band));
-    }
+      // Ignore ordinary pan/zoom movement. Only bearing and pitch
+      // affect the camera-facing building classification.
+      const cameraKey = `${bearing.toFixed(2)}:${pitch.toFixed(2)}`;
 
-    mapInstance.setFilter(
-      LAYERS.outline,
-      createBuildingVisibilityFilter("distant"),
-    );
+      if (cameraKey === lastCameraKey) return;
+
+      lastCameraKey = cameraKey;
+
+      const classifiedData = annotateBuildingsForRoute(
+        buildingData,
+        selectedRoute.geometry,
+        bearing,
+        pitch,
+      );
+
+      source.setData(classifiedData as Parameters<typeof source.setData>[0]);
+
+      for (const band of ["obstructing", "shade", "distant"] as const) {
+        mapInstance.setFilter(
+          LAYERS[band],
+          createBuildingVisibilityFilter(band),
+        );
+      }
+
+      mapInstance.setFilter(
+        LAYERS.outline,
+        createBuildingVisibilityFilter("distant"),
+      );
+    };
+
+    updateOcclusion();
+
+    // Update after the user finishes rotating or tilting the map.
+    // Avoid recalculating hundreds of building geometries every frame.
+    mapInstance.on("moveend", updateOcclusion);
+
+    return () => {
+      mapInstance.off("moveend", updateOcclusion);
+    };
   }, [map, buildingData, selectedRoute]);
 
   return null;

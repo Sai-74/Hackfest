@@ -1,16 +1,14 @@
 import { useEffect } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap } from "maplibre-gl";
+
 import { useMap } from "./map-context";
 import { useRoutes } from "@/features/routes/useRoutes";
 
-import type { RouteKind } from "@/types/routes";
+import type { LonLat, RouteKind } from "@/types/routes";
 
 import {
-  BUILDING_OBSTRUCTION_BASE_M,
-  BUILDING_OBSTRUCTION_HEIGHT_FACTOR,
   BUILDING_OBSTRUCTION_MAX_M,
-  BUILDING_OBSTRUCTION_MIN_M,
   HIDDEN_BUILDING_FILTER,
 } from "@/lib/map/buildingVisibility";
 
@@ -30,52 +28,169 @@ const OLD_LAYERS = [
   "coolroute-buildings-distant-outline",
 ];
 
+interface CorridorPolygonFeature {
+  type: "Feature";
+  properties: Record<string, never>;
+  geometry: {
+    type: "Polygon";
+    coordinates: LonLat[][];
+  };
+}
+
+interface CorridorFeatureCollection {
+  type: "FeatureCollection";
+  features: CorridorPolygonFeature[];
+}
+
 interface Props {
   selectedRouteKind: RouteKind;
 }
 
-function createOsmBuildingFilters(route: [number, number][]) {
+function createCameraOcclusionCorridor(
+  route: LonLat[],
+  bearing: number,
+  pitch: number,
+): CorridorFeatureCollection {
+  const pitchRadians = (Math.max(0, Math.min(85, pitch)) * Math.PI) / 180;
+
+  // At the default 58-degree pitch, allow a maximum 40 m
+  // camera-facing obstruction corridor.
+  const depth = Math.min(
+    BUILDING_OBSTRUCTION_MAX_M,
+    (BUILDING_OBSTRUCTION_MAX_M * Math.tan(pitchRadians)) /
+      Math.tan((58 * Math.PI) / 180),
+  );
+
+  const features: CorridorPolygonFeature[] = [];
+
+  if (route.length < 2 || depth < 0.25) {
+    return {
+      type: "FeatureCollection",
+      features,
+    };
+  }
+
+  // Map bearing is the direction pointing up.
+  // The camera-facing direction is therefore the opposite.
+  const cameraAzimuth = ((bearing + 180) * Math.PI) / 180;
+
+  const cameraEast = Math.sin(cameraAzimuth);
+  const cameraNorth = Math.cos(cameraAzimuth);
+
+  // Perpendicular to the camera direction, along screen width.
+  const sideEast = -cameraNorth;
+  const sideNorth = cameraEast;
+
+  const halfWidthM = Math.min(18, Math.max(6, depth * 0.5));
+
+  function toCoordinate(origin: LonLat, eastM: number, northM: number): LonLat {
+    const latitudeFactor = Math.cos((origin[1] * Math.PI) / 180);
+
+    return [
+      origin[0] + eastM / (111320 * latitudeFactor),
+      origin[1] + northM / 110574,
+    ];
+  }
+
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+
+    const longitudeScale = 111320 * Math.cos((a[1] * Math.PI) / 180);
+
+    const bx = (b[0] - a[0]) * longitudeScale;
+    const by = (b[1] - a[1]) * 110574;
+
+    if (Math.hypot(bx, by) < 0.1) continue;
+
+    const corners: LonLat[] = [
+      // Camera-side corridor begins at the route segment.
+      toCoordinate(a, -sideEast * halfWidthM, -sideNorth * halfWidthM),
+
+      toCoordinate(a, bx - sideEast * halfWidthM, by - sideNorth * halfWidthM),
+
+      // Extend the far edge towards the camera.
+      toCoordinate(
+        a,
+        bx + cameraEast * depth + sideEast * halfWidthM,
+        by + cameraNorth * depth + sideNorth * halfWidthM,
+      ),
+
+      toCoordinate(
+        a,
+        cameraEast * depth + sideEast * halfWidthM,
+        cameraNorth * depth + sideNorth * halfWidthM,
+      ),
+    ];
+
+    corners.push(corners[0]);
+
+    features.push({
+      type: "Feature",
+      properties: {},
+      geometry: {
+        type: "Polygon",
+        coordinates: [corners],
+      },
+    });
+  }
+
+  return {
+    type: "FeatureCollection",
+    features,
+  };
+}
+
+function createOsmBuildingFilters(
+  route: LonLat[],
+  bearing: number,
+  pitch: number,
+) {
+  const visibleBuilding = ["!=", ["get", "hide_3d"], true];
+
+  const pitchRadians = (Math.max(0, Math.min(85, pitch)) * Math.PI) / 180;
+
+  const heightReach = [
+    "min",
+    BUILDING_OBSTRUCTION_MAX_M,
+    ["*", ["coalesce", ["get", "render_height"], 6], Math.tan(pitchRadians)],
+  ];
+
+  const obstructionCorridor = createCameraOcclusionCorridor(
+    route,
+    bearing,
+    pitch,
+  );
+
   const routeLine = {
     type: "LineString" as const,
     coordinates: route,
   };
 
-  // Estimate how far an extrusion can visually intrude into the
-  // road's screen-space corridor, accounting for its height.
-  const obstructionReach = [
-    "min",
-    BUILDING_OBSTRUCTION_MAX_M,
-    [
-      "max",
-      BUILDING_OBSTRUCTION_MIN_M,
-      [
-        "+",
-        BUILDING_OBSTRUCTION_BASE_M,
-        [
-          "*",
-          ["coalesce", ["get", "render_height"], 6],
-          BUILDING_OBSTRUCTION_HEIGHT_FACTOR,
-        ],
-      ],
-    ],
-  ];
+  const hitsCameraCorridor = ["<=", ["distance", obstructionCorridor], 0.1];
 
-  const distance = ["distance", routeLine];
+  const closeEnoughToRoute = ["<=", ["distance", routeLine], heightReach];
 
-  const visibleBuilding = ["!=", ["get", "hide_3d"], true];
+  const isObstructing = ["all", closeEnoughToRoute, hitsCameraCorridor];
+
+  const alwaysFalse = ["==", 1, 0];
 
   return {
-    obstructing: [
-      "all",
-      visibleBuilding,
-      ["<=", distance, obstructionReach],
-    ] as unknown as maplibregl.FilterSpecification,
+    obstructing: (pitch < 1
+      ? alwaysFalse
+      : [
+          "all",
+          visibleBuilding,
+          isObstructing,
+        ]) as unknown as maplibregl.FilterSpecification,
 
-    normal: [
-      "all",
-      visibleBuilding,
-      [">", distance, obstructionReach],
-    ] as unknown as maplibregl.FilterSpecification,
+    normal: (pitch < 1
+      ? visibleBuilding
+      : [
+          "all",
+          visibleBuilding,
+          ["!", isObstructing],
+        ]) as unknown as maplibregl.FilterSpecification,
   };
 }
 
@@ -158,11 +273,9 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
     }
 
     addBuildingLayer(mapInstance, BUILDINGS_EXTRUSION_LAYER_ID, 0.94);
+
     addBuildingLayer(mapInstance, OBSTRUCTING_LAYER_ID, 0.12);
 
-    // A subtle non-extrusion divider separates OSM and campus
-    // extrusion groups, helping transparent surfaces composite
-    // independently instead of merging into one extrusion pass.
     mapInstance.addLayer(
       {
         id: DIVIDER_LAYER_ID,
@@ -180,7 +293,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       firstSymbolLayer,
     );
 
-    console.info("[buildings] Route-aware OSM extrusion layers added.");
+    console.info("[buildings] Camera-aware OSM extrusion layers added.");
 
     return () => {
       for (const id of [
@@ -195,17 +308,42 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
     };
   }, [map]);
 
-  // Reclassify OSM buildings when the selected route changes.
+  // Recalculate camera-facing occlusion after route or camera changes.
   useEffect(() => {
     if (!map || !selectedRoute) return;
 
-    const filters = createOsmBuildingFilters(selectedRoute.geometry);
+    let lastCameraKey = "";
 
-    map.setFilter(OBSTRUCTING_LAYER_ID, filters.obstructing);
+    const updateOcclusion = () => {
+      const bearing = map.getBearing();
+      const pitch = map.getPitch();
 
-    map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.normal);
+      const cameraKey = `${bearing.toFixed(2)}:${pitch.toFixed(2)}`;
 
-    map.setFilter(DIVIDER_LAYER_ID, filters.obstructing);
+      if (cameraKey === lastCameraKey) return;
+
+      lastCameraKey = cameraKey;
+
+      const filters = createOsmBuildingFilters(
+        selectedRoute.geometry,
+        bearing,
+        pitch,
+      );
+
+      map.setFilter(OBSTRUCTING_LAYER_ID, filters.obstructing);
+
+      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.normal);
+
+      map.setFilter(DIVIDER_LAYER_ID, filters.obstructing);
+    };
+
+    updateOcclusion();
+
+    map.on("moveend", updateOcclusion);
+
+    return () => {
+      map.off("moveend", updateOcclusion);
+    };
   }, [map, selectedRoute]);
 
   return null;

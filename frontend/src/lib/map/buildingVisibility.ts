@@ -4,7 +4,7 @@ import type { LonLat } from "@/types/routes";
 export const BUILDING_OBSTRUCTION_BASE_M = 8;
 export const BUILDING_OBSTRUCTION_HEIGHT_FACTOR = 0.85;
 export const BUILDING_OBSTRUCTION_MIN_M = 14;
-export const BUILDING_OBSTRUCTION_MAX_M = 26;
+export const BUILDING_OBSTRUCTION_MAX_M = 40;
 export const BUILDING_SHADE_DISTANCE_M = 48;
 
 export type BuildingVisibilityBand = "obstructing" | "shade" | "distant";
@@ -231,43 +231,178 @@ export function distanceGeometryToRouteMeters(
   return minimumDistance;
 }
 
-function obstructionReachForHeight(heightM: number): number {
-  return Math.max(
-    BUILDING_OBSTRUCTION_MIN_M,
-    Math.min(
-      BUILDING_OBSTRUCTION_MAX_M,
-      BUILDING_OBSTRUCTION_BASE_M +
-        heightM * BUILDING_OBSTRUCTION_HEIGHT_FACTOR,
-    ),
-  );
+function ringCentroid(ring: LonLat[]): {
+  point: LonLat;
+  area: number;
+} {
+  let area2 = 0;
+  let cx = 0;
+  let cy = 0;
+
+  for (let i = 0; i < ring.length - 1; i++) {
+    const a = ring[i];
+    const b = ring[i + 1];
+
+    const cross = a[0] * b[1] - b[0] * a[1];
+
+    area2 += cross;
+    cx += (a[0] + b[0]) * cross;
+    cy += (a[1] + b[1]) * cross;
+  }
+
+  if (Math.abs(area2) < 1e-12) {
+    const points = ring.slice(0, -1);
+
+    return {
+      point: [
+        points.reduce((sum, p) => sum + p[0], 0) / points.length,
+        points.reduce((sum, p) => sum + p[1], 0) / points.length,
+      ],
+      area: 0,
+    };
+  }
+
+  return {
+    point: [cx / (3 * area2), cy / (3 * area2)],
+    area: Math.abs(area2) / 2,
+  };
+}
+
+function geometryCentroid(geometry: BuildingGeometry): LonLat {
+  const polygons =
+    geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+
+  let weightedLon = 0;
+  let weightedLat = 0;
+  let totalArea = 0;
+
+  for (const polygon of polygons) {
+    const outerRing = polygon[0];
+
+    if (!outerRing || outerRing.length < 4) continue;
+
+    const centroid = ringCentroid(outerRing);
+
+    if (centroid.area <= 0) continue;
+
+    weightedLon += centroid.point[0] * centroid.area;
+    weightedLat += centroid.point[1] * centroid.area;
+    totalArea += centroid.area;
+  }
+
+  if (totalArea === 0) {
+    const ring = polygons[0]?.[0] ?? [];
+
+    return [
+      ring.reduce((sum, p) => sum + p[0], 0) / Math.max(1, ring.length),
+      ring.reduce((sum, p) => sum + p[1], 0) / Math.max(1, ring.length),
+    ];
+  }
+
+  return [weightedLon / totalArea, weightedLat / totalArea];
+}
+
+/**
+ * Positive values mean the building is on the camera-facing
+ * side of the route. Negative values mean it is behind the route.
+ */
+export function cameraSideDepthMeters(
+  point: LonLat,
+  route: LonLat[],
+  bearing: number,
+): number {
+  if (route.length < 2) return -Infinity;
+
+  const longitudeScale = 111320 * Math.cos((point[1] * Math.PI) / 180);
+
+  let nearestDistanceSquared = Infinity;
+  let nearestX = 0;
+  let nearestY = 0;
+
+  for (let i = 0; i < route.length - 1; i++) {
+    const a = route[i];
+    const b = route[i + 1];
+
+    const ax = (a[0] - point[0]) * longitudeScale;
+    const ay = (a[1] - point[1]) * 110574;
+
+    const bx = (b[0] - point[0]) * longitudeScale;
+    const by = (b[1] - point[1]) * 110574;
+
+    const dx = bx - ax;
+    const dy = by - ay;
+
+    const denominator = dx * dx + dy * dy;
+
+    const t =
+      denominator === 0
+        ? 0
+        : Math.max(0, Math.min(1, -(ax * dx + ay * dy) / denominator));
+
+    const x = ax + t * dx;
+    const y = ay + t * dy;
+
+    const distanceSquared = x * x + y * y;
+
+    if (distanceSquared < nearestDistanceSquared) {
+      nearestDistanceSquared = distanceSquared;
+      nearestX = x;
+      nearestY = y;
+    }
+  }
+
+  // Vector from the nearest route point towards the building.
+  const east = -nearestX;
+  const north = -nearestY;
+
+  // MapLibre bearing describes the compass direction pointing up.
+  // The camera is on the opposite side of that direction.
+  const cameraAzimuth = ((bearing + 180) * Math.PI) / 180;
+
+  const cameraEast = Math.sin(cameraAzimuth);
+  const cameraNorth = Math.cos(cameraAzimuth);
+
+  return east * cameraEast + north * cameraNorth;
+}
+
+function obstructionReachForHeight(heightM: number, pitchDeg: number): number {
+  const pitch = Math.max(0, Math.min(85, pitchDeg));
+  const pitchRadians = (pitch * Math.PI) / 180;
+
+  // Approximate horizontal displacement of the top of a
+  // vertical extrusion in the pitched camera projection.
+  return Math.min(BUILDING_OBSTRUCTION_MAX_M, heightM * Math.tan(pitchRadians));
 }
 
 export function annotateBuildingsForRoute(
   collection: BuildingFeatureCollection,
   route: LonLat[],
+  bearing: number,
+  pitch: number,
 ): BuildingFeatureCollection {
   return {
     ...collection,
     features: collection.features.map((feature) => {
       const distance = distanceGeometryToRouteMeters(feature.geometry, route);
-
+      const center = geometryCentroid(feature.geometry);
+      const cameraDepth = cameraSideDepthMeters(center, route, bearing);
       const rawHeight = Number(feature.properties?.height_m);
       const height = Number.isFinite(rawHeight) ? rawHeight : 4;
-
-      const obstructionReach = obstructionReachForHeight(height);
-
-      const visibility: BuildingVisibilityBand =
-        distance <= obstructionReach
-          ? "obstructing"
-          : distance <= BUILDING_SHADE_DISTANCE_M
-            ? "shade"
-            : "distant";
-
+      const obstructionReach = obstructionReachForHeight(height, pitch);
+      const intersectsRoute = distance < 0.5;
+      const isCameraFacing = cameraDepth > 0.5 || intersectsRoute;
+      const isObstructing = distance <= obstructionReach && isCameraFacing;
+      const visibility: BuildingVisibilityBand = isObstructing
+        ? "obstructing"
+        : distance <= BUILDING_SHADE_DISTANCE_M
+          ? "shade"
+          : "distant";
       return {
         ...feature,
         properties: {
           ...(feature.properties ?? {}),
           route_distance_m: distance,
+          camera_depth_m: cameraDepth,
           occlusion_reach_m: obstructionReach,
           route_visibility: visibility,
         },
@@ -275,6 +410,7 @@ export function annotateBuildingsForRoute(
     }),
   };
 }
+
 export function createBuildingVisibilityFilter(
   band: BuildingVisibilityBand,
 ): FilterSpecification {
