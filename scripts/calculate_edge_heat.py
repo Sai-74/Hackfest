@@ -26,11 +26,13 @@ SAMPLE_TIMES = {
     "evening": (16, 30)
 }
 
+
 def compute_sun_positions(lat=DEFAULT_LAT, lon=DEFAULT_LON, date=TEST_DATE):
     obs = Observer(latitude=lat, longitude=lon)
     positions = {}
     for label, (h, m) in SAMPLE_TIMES.items():
-        dt = TIMEZONE.localize(datetime(date.year, date.month, date.day, h, m, 0))
+        dt = TIMEZONE.localize(
+            datetime(date.year, date.month, date.day, h, m, 0))
         elev = sun.elevation(obs, dt)
         az = sun.azimuth(obs, dt)
         positions[label] = {
@@ -38,8 +40,10 @@ def compute_sun_positions(lat=DEFAULT_LAT, lon=DEFAULT_LON, date=TEST_DATE):
             "azimuth": az,
             "datetime": dt
         }
-        print(f"Sun for {label} ({dt.strftime('%H:%M')}): elevation={elev:.2f}°, azimuth={az:.2f}°", flush=True)
+        print(f"Sun for {label} ({dt.strftime('%H:%M')}): elevation={
+              elev:.2f}°, azimuth={az:.2f}°", flush=True)
     return positions
+
 
 def generate_shadow_unions(buildings_gdf, sun_positions, clip_box_32645=None):
     """
@@ -90,13 +94,15 @@ def generate_shadow_unions(buildings_gdf, sun_positions, clip_box_32645=None):
             if not full_shadow.is_empty:
                 shadow_polygons.append(full_shadow)
 
-        print(f"Dissolving {len(shadow_polygons)} individual shadows for {label}...", flush=True)
+        print(f"Dissolving {len(shadow_polygons)
+                            } individual shadows for {label}...", flush=True)
         # Dissolve / union overlapping shadows
         shadow_union = unary_union(shadow_polygons)
         shadow_unions[label] = shadow_union
         print(f"Shadow union created for {label}.", flush=True)
 
     return shadow_unions
+
 
 def sample_utci_along_geom(geom_32645, utci_src, utci_band, sample_dist_m=5.0):
     """
@@ -123,8 +129,10 @@ def sample_utci_along_geom(geom_32645, utci_src, utci_band, sample_dist_m=5.0):
         return float(np.mean(values))
     return None
 
+
 def process_and_enrich_graphs():
-    data_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+    data_dir = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "data"))
     buildings_path = os.path.join(data_dir, "buildings.geojson")
     utci_path = os.path.join(data_dir, "utci_day_mean.tif")
 
@@ -133,11 +141,13 @@ def process_and_enrich_graphs():
 
     # Metric bounding box (EPSG:32645) with 150m buffer
     minx, miny, maxx, maxy = buildings_gdf.total_bounds
-    clip_box = shapely.geometry.box(minx - 150, miny - 150, maxx + 150, maxy + 150)
+    clip_box = shapely.geometry.box(
+        minx - 150, miny - 150, maxx + 150, maxy + 150)
 
     # Compute sun positions and shadow unions
     sun_positions = compute_sun_positions()
-    shadow_unions = generate_shadow_unions(buildings_gdf, sun_positions, clip_box)
+    shadow_unions = generate_shadow_unions(
+        buildings_gdf, sun_positions, clip_box)
 
     # Open UTCI raster if valid
     utci_src = None
@@ -146,16 +156,19 @@ def process_and_enrich_graphs():
         try:
             utci_src = rasterio.open(utci_path)
             utci_band = utci_src.read(1)
-            print(f"Loaded UTCI raster from {utci_path}, CRS: {utci_src.crs}, shape: {utci_band.shape}", flush=True)
+            print(f"Loaded UTCI raster from {utci_path}, CRS: {
+                  utci_src.crs}, shape: {utci_band.shape}", flush=True)
         except Exception as e:
             print(f"Failed to open UTCI raster: {e}", flush=True)
 
-    transformer_4326_to_32645 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:32645", always_xy=True).transform
+    transformer_4326_to_32645 = pyproj.Transformer.from_crs(
+        "EPSG:4326", "EPSG:32645", always_xy=True).transform
 
     for mode in ["walk", "bike"]:
         graphml_path = os.path.join(data_dir, f"ravenshaw_{mode}.graphml")
         if not os.path.exists(graphml_path):
-            print(f"GraphML {graphml_path} does not exist, skipping.", flush=True)
+            print(
+                f"GraphML {graphml_path} does not exist, skipping.", flush=True)
             continue
 
         print(f"\n--- Enriching {mode} graph ({graphml_path}) ---", flush=True)
@@ -174,7 +187,8 @@ def process_and_enrich_graphs():
                 # Build LineString from node coordinates
                 u_node = G.nodes[u]
                 v_node = G.nodes[v]
-                geom_4326 = shapely.geometry.LineString([(u_node["x"], u_node["y"]), (v_node["x"], v_node["y"])])
+                geom_4326 = shapely.geometry.LineString(
+                    [(u_node["x"], u_node["y"]), (v_node["x"], v_node["y"])])
 
             # Reproject to metric EPSG:32645
             geom_32645 = transform(transformer_4326_to_32645, geom_4326)
@@ -185,9 +199,12 @@ def process_and_enrich_graphs():
 
             # Shade calculations
             if total_len > 0:
-                m_shade = geom_32645.intersection(shadow_unions["morning"]).length
-                d_shade = geom_32645.intersection(shadow_unions["midday"]).length
-                e_shade = geom_32645.intersection(shadow_unions["evening"]).length
+                m_shade = geom_32645.intersection(
+                    shadow_unions["morning"]).length
+                d_shade = geom_32645.intersection(
+                    shadow_unions["midday"]).length
+                e_shade = geom_32645.intersection(
+                    shadow_unions["evening"]).length
 
                 frac_m = min(1.0, max(0.0, m_shade / total_len))
                 frac_d = min(1.0, max(0.0, d_shade / total_len))
@@ -206,7 +223,8 @@ def process_and_enrich_graphs():
 
             # UTCI sampling
             if utci_src is not None:
-                mean_utci = sample_utci_along_geom(geom_32645, utci_src, utci_band)
+                mean_utci = sample_utci_along_geom(
+                    geom_32645, utci_src, utci_band)
                 if mean_utci is not None:
                     data["utci_deg_c"] = round(mean_utci, 2)
                     edge_utci_values.append(mean_utci)
@@ -219,11 +237,13 @@ def process_and_enrich_graphs():
         if len(edge_utci_values) > 0:
             min_utci = min(edge_utci_values)
             max_utci = max(edge_utci_values)
-            print(f"UTCI stats for {mode}: min={min_utci:.2f}°C, max={max_utci:.2f}°C, mean={np.mean(edge_utci_values):.2f}°C", flush=True)
+            print(f"UTCI stats for {mode}: min={min_utci:.2f}°C, max={
+                  max_utci:.2f}°C, mean={np.mean(edge_utci_values):.2f}°C", flush=True)
             for u, v, k, data in G.edges(keys=True, data=True):
                 val = data.get("utci_deg_c")
                 if val is not None and max_utci > min_utci:
-                    data["utci_score"] = round(max(0.0, min(1.0, (val - min_utci) / (max_utci - min_utci))), 4)
+                    data["utci_score"] = round(
+                        max(0.0, min(1.0, (val - min_utci) / (max_utci - min_utci))), 4)
                 elif val is not None:
                     data["utci_score"] = 0.5
                 else:
@@ -242,16 +262,20 @@ def process_and_enrich_graphs():
         if "u" not in edges_gdf.columns:
             edges_gdf = edges_gdf.reset_index()
 
-        nodes_geojson = os.path.join(data_dir, f"ravenshaw_{mode}_nodes.geojson")
-        edges_geojson = os.path.join(data_dir, f"ravenshaw_{mode}_edges.geojson")
+        nodes_geojson = os.path.join(
+            data_dir, f"ravenshaw_{mode}_nodes.geojson")
+        edges_geojson = os.path.join(
+            data_dir, f"ravenshaw_{mode}_edges.geojson")
         nodes_gdf.to_file(nodes_geojson, driver="GeoJSON")
         edges_gdf.to_file(edges_geojson, driver="GeoJSON")
-        print(f"Saved enriched GeoJSON: {edges_geojson} ({len(edges_gdf)} edges)", flush=True)
+        print(f"Saved enriched GeoJSON: {
+              edges_geojson} ({len(edges_gdf)} edges)", flush=True)
 
     if utci_src is not None:
         utci_src.close()
 
     print("All edge heat and shade calculations completed successfully!", flush=True)
+
 
 if __name__ == "__main__":
     process_and_enrich_graphs()
