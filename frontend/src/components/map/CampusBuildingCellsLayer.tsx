@@ -210,9 +210,9 @@ async function addCampusCellLayers(
     "interpolate",
     ["linear"],
     ["zoom"],
-    14,
-    0,
     15,
+    0,
+    15.5,
     ["*", dnHeight, 0.85],
   ];
 
@@ -244,7 +244,7 @@ async function addCampusCellLayers(
         id,
         type: "fill-extrusion",
         source: SOURCE_ID,
-        minzoom: 14,
+        minzoom: 15,
         filter,
         paint: {
           "fill-extrusion-color": cellColor,
@@ -260,10 +260,6 @@ async function addCampusCellLayers(
 
   addCellLayer(BASE_LAYER_ID, 0.96, VISIBLE_FILTER);
   addCellLayer(OBSTRUCTING_LAYER_ID, 0.18, HIDDEN_FILTER);
-
-  console.info(
-    `[buildings] ${data.features.length} original 4 m campus cells added as 3D blocks.`,
-  );
 
   return true;
 }
