@@ -6,7 +6,6 @@ import { useMap } from "./map-context";
 import { useRoutes } from "@/features/routes/useRoutes";
 
 import type { LonLat, RouteKind } from "@/types/routes";
-import type { BuildingFeatureCollection } from "@/lib/map/buildingVisibility";
 
 import { BUILDINGS_EXTRUSION_LAYER_ID } from "@/lib/map/layers";
 
@@ -178,17 +177,6 @@ async function addCampusCellLayers(
   map: MapLibreMap,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const response = await fetch(
-    `${import.meta.env.BASE_URL}data/buildings-wgs84.geojson`,
-    { signal },
-  );
-
-  if (!response.ok) {
-    throw new Error("Could not load the original campus building cells.");
-  }
-
-  const data = (await response.json()) as BuildingFeatureCollection;
-
   if (signal.aborted) return false;
 
   // Remove previous campus representations.
@@ -202,9 +190,10 @@ async function addCampusCellLayers(
     map.removeSource(SOURCE_ID);
   }
 
+  // Let MapLibre fetch and parse GeoJSON through its own workers.
   map.addSource(SOURCE_ID, {
     type: "geojson",
-    data,
+    data: `${import.meta.env.BASE_URL}data/buildings-wgs84.geojson`,
     maxzoom: 18,
     buffer: 32,
     tolerance: 0.05,
