@@ -4,6 +4,7 @@ import { buildLineIndex } from "@/lib/map/lineMath";
 import { HEAT_BANDS, heatBandFor } from "@/features/heat/heatScale";
 import { treeShadeCoverageAt } from "@/features/shade/treeShade";
 import { DEMO_WATER_POINTS } from "@/services/mock/demoWater";
+import { type typeOf } from "maplibre-gl";
 
 const SHADE_SAMPLE_STEP_M = 4;
 const WATER_NEARBY_THRESHOLD_M = 60;
@@ -107,7 +108,11 @@ function calculateHeatBreakdown(route: RouteOption): {
   );
 
   const averageHeatScore =
-    totalLength > 0 ? Math.round(weightedScore / totalLength) : 0;
+    typeof route.summary.avgHeatScore === "number"
+      ? Math.round(route.summary.avgHeatScore)
+      : totalLength > 0
+        ? Math.round(weightedScore / totalLength)
+        : 0;
 
   const averageBand = heatBandFor(averageHeatScore);
 
@@ -137,10 +142,23 @@ function calculateHeatBreakdown(route: RouteOption): {
   };
 }
 
-function calculateShadeCoverage(geometry: LonLat[]): {
+function calculateShadeCoverage(route: RouteOption): {
   shadedDistanceM: number;
   shadePercent: number;
 } {
+  if (
+    typeof route.summary.avgShadeFraction === "number" &&
+    Number.isFinite(route.summary.avgShadeFraction)
+  ) {
+    const fraction = Math.max(0, Math.min(1, route.summary.avgShadeFraction));
+    return {
+      shadedDistanceM: route.summary.distanceM * fraction,
+      shadePercent: fraction * 100,
+    };
+  }
+
+  const geometry = route.geometry;
+
   if (geometry.length < 2) {
     return { shadedDistanceM: 0, shadePercent: 0 };
   }
@@ -203,7 +221,7 @@ function calculateNearbyWaterPoints(geometry: LonLat[]): {
 
 export function calculateRouteInsights(route: RouteOption): RouteInsightsData {
   const heat = calculateHeatBreakdown(route);
-  const shade = calculateShadeCoverage(route.geometry);
+  const shade = calculateShadeCoverage(route);
   const water = calculateNearbyWaterPoints(route.geometry);
 
   return {

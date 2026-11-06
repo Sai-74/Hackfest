@@ -1,13 +1,12 @@
 import { mockRouteOptions } from "@/services/mock/demoRoutes";
-import type { LonLat, RouteOption, RouteKind } from "@/types/routes";
+import type { LonLat, RouteOption } from "@/types/routes";
 
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
-interface RouteRequest {
-  origin: LonLat;
-  destination: LonLat;
-  profile: "walking";
-  alternatives: RouteKind[];
+interface BackendRouteRequest {
+  start: LonLat;
+  end: LonLat;
+  mode: "walk";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -16,6 +15,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function isOptionalNumber(value: unknown): boolean {
+  return value === undefined || value === null || isNumber(value);
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || value === null || typeof value === "string";
 }
 
 function isLonLat(value: unknown): value is LonLat {
@@ -60,33 +67,61 @@ function isRouteOption(value: unknown): value is RouteOption {
     );
   });
 
+  const summary = value.summary;
+
   return (
     validSegments &&
-    isNumber(value.summary.distanceM) &&
-    isNumber(value.summary.durationMin) &&
-    value.summary.distanceM > 0 &&
-    value.summary.durationMin >= 0
+    isNumber(summary.distanceM) &&
+    isNumber(summary.durationMin) &&
+    summary.distanceM > 0 &&
+    summary.durationMin >= 0 &&
+    isOptionalNumber(summary.avgHeatScore) &&
+    isOptionalNumber(summary.avgShadeFraction) &&
+    isOptionalNumber(summary.avgUtciDegC) &&
+    isOptionalString(summary.heatSource) &&
+    isOptionalString(summary.heatSourceLabel)
   );
 }
 
 function parseRouteResponse(payload: unknown): RouteOption[] {
   if (!isRecord(payload) || !Array.isArray(payload.routes)) {
-    throw new Error("Invalid routes API response: expected a routes array.");
+    throw new Error("Invalid backend response: expected a routes array.");
   }
 
   const routes = payload.routes;
 
   if (!routes.every(isRouteOption)) {
-    throw new Error("Invalid routes API response: malformed route data.");
+    throw new Error("Backend returned malformed route data.");
   }
 
   const kinds = new Set(routes.map((route) => route.kind));
 
   if (!kinds.has("fastest") || !kinds.has("weighted")) {
-    throw new Error("Routes API must return both fastest and weighted routes.");
+    throw new Error("Backend must return both fastest and weighted routes.");
   }
 
   return routes;
+}
+
+function getErrorDetail(payload: unknown): string | null {
+  if (!isRecord(payload) || payload.detail === undefined) {
+    return null;
+  }
+
+  if (typeof payload.detail === "string") {
+    return payload.detail;
+  }
+
+  if (Array.isArray(payload.detail)) {
+    return payload.detail
+      .map((item) =>
+        isRecord(item) && typeof item.msg === "string" ? item.msg : "",
+      )
+      .filter(Boolean)
+      .join("; ");
+  }
+
+  return null;
 }
 
 interface FetchRouteOptionsInput {
@@ -106,38 +141,48 @@ export async function fetchRouteOptions({
     return mockRouteOptions(origin, destination, solarTimeMinutes ?? 12 * 60);
   }
 
-  const base = import.meta.env.VITE_API_BASE_URL?.trim();
+  const base = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/+$/, "");
 
   if (!base) {
-    throw new Error("VITE_API_BASE_URL is unset while mock data is disabled.");
+    throw new Error(
+      "VITE_API_BASE_URL is missing. Configure frontend/.env.local.",
+    );
   }
 
-  const request: RouteRequest = {
-    origin,
-    destination,
-    profile: "walking",
-    alternatives: ["fastest", "weighted"],
+  const request: BackendRouteRequest = {
+    start: origin,
+    end: destination,
+    mode: "walk",
   };
 
-  const response = await fetch(`${base.replace(/\/+$/, "")}/api/routes`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(request),
-    signal,
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(`${base}/api/routes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(request),
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+
+    throw new Error(
+      `Could not connect to the CoolRoute backend at ${base}. Check that FastAPI is running.`,
+    );
+  }
 
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const detail =
-      isRecord(payload) && typeof payload.detail === "string"
-        ? payload.detail
-        : `HTTP ${response.status}`;
+    const detail = getErrorDetail(payload);
 
-    throw new Error(`Routes API failed: ${detail}`);
+    throw new Error(
+      detail ?? `Routing request failed: HTTP ${response.status}`,
+    );
   }
 
   return parseRouteResponse(payload);

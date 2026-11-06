@@ -1,5 +1,6 @@
 export type LonLat = [number, number];
 export type RouteKind = "fastest" | "weighted";
+
 export interface RouteSegmentHeat {
   startDist: number;
   endDist: number;
@@ -9,6 +10,13 @@ export interface RouteSegmentHeat {
 export interface RouteSummary {
   distanceM: number;
   durationMin: number;
+
+  // Backend-provided environmental statistics.
+  avgHeatScore?: number;
+  avgShadeFraction?: number;
+  avgUtciDegC?: number | null;
+  heatSource?: string;
+  heatSourceLabel?: string;
 }
 
 export interface RouteOption {

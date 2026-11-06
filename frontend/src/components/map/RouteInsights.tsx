@@ -71,7 +71,7 @@ export function RouteInsights({ route, expanded }: Props) {
         </div>
 
         <span className="shrink-0 rounded-full bg-secondary px-2 py-1 text-[8px] font-semibold text-secondary-foreground">
-          DEMO ESTIMATES
+          {route.summary.heatSourceLabel ?? "DEMO ESTIMATES"}
         </span>
       </div>
 
@@ -130,29 +130,52 @@ export function RouteInsights({ route, expanded }: Props) {
               ))}
             </div>
 
-            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-              {insights.heatBreakdown.map((band) => (
+            {route.segments.length > 1 ? (
+              <>
                 <div
-                  key={band.id}
-                  className="flex min-w-0 items-center gap-1.5"
+                  className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted"
+                  aria-label="Route heat exposure distribution"
                 >
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: band.color }}
-                  />
-
-                  <div className="min-w-0">
-                    <p className="truncate text-[10px] text-muted-foreground">
-                      {band.label}
-                    </p>
-
-                    <p className="text-xs font-semibold tabular-nums">
-                      {formatDistance(band.distanceM)}
-                    </p>
-                  </div>
+                  {insights.heatBreakdown.map((band) => (
+                    <div
+                      key={band.id}
+                      title={`${band.label}: ${Math.round(band.percent)}%`}
+                      style={{
+                        width: `${band.percent}%`,
+                        backgroundColor: band.color,
+                      }}
+                    />
+                  ))}
                 </div>
-              ))}
-            </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+                  {insights.heatBreakdown.map((band) => (
+                    <div
+                      key={band.id}
+                      className="flex min-w-0 items-center gap-1.5"
+                    >
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: band.color }}
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-[10px] text-muted-foreground">
+                          {band.label}
+                        </p>
+                        <p className="text-xs font-semibold tabular-nums">
+                          {formatDistance(band.distanceM)}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <p className="rounded-lg bg-background/70 p-3 text-[10px] leading-relaxed text-muted-foreground">
+                The backend currently provides an average heat score for the
+                complete route. Per-segment heat values are not available yet.
+              </p>
+            )}
           </div>
 
           {/* Nearby drinking-water points */}
@@ -220,8 +243,11 @@ export function RouteInsights({ route, expanded }: Props) {
           </div>
 
           <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
-            Heat and shade are estimated from synthetic tree data. Water
-            locations are illustrative demo points, not verified facilities.
+            {route.summary.heatSourceLabel
+              ? `Heat and shade use backend-provided ${route.summary.heatSourceLabel} data.`
+              : "Heat and shade are estimated from synthetic tree data."}{" "}
+            Water locations remain illustrative demo points, not verified
+            facilities.
           </p>
         </>
       )}
