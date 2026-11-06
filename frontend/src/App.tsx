@@ -13,10 +13,11 @@ import {
   RouteInputProvider,
   useRouteInputs,
 } from "@/features/routes/route-input-context";
-
+import { SolarTimeControl } from "@/components/map/SolarTimeControl";
 import type { RouteKind } from "@/types/routes";
 import { SolarShadowsLayer } from "./components/map/SolarShadowsLayer";
 import { SolarTimeProvider } from "./features/shade/solar-time-context";
+import { CampusBuildingCellsLayer } from "@/components/map/CampusBuildingCellsLayer";
 
 function AppContent() {
   const [selectedRouteKind, setSelectedRouteKind] =
@@ -29,6 +30,7 @@ function AppContent() {
       <main className="relative flex-1 overflow-hidden">
         <MapViewport>
           <BuildingsLayer selectedRouteKind={selectedRouteKind} />
+          <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
           <TreeShadeLayer />
           <SolarShadowsLayer />
           <RoadNetworkLayer />
@@ -37,6 +39,8 @@ function AppContent() {
           <RouteWaypointsLayer selectedRouteKind={selectedRouteKind} />
           <RouteMapPicker />
         </MapViewport>
+
+        <SolarTimeControl />
 
         {!selectionMode && <RouteLegend />}
 

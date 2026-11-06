@@ -10,7 +10,6 @@ import type { LonLat, RouteKind } from "@/types/routes";
 import {
   BUILDING_OBSTRUCTION_MAX_M,
   BUILDING_SHADE_DISTANCE_M,
-  HIDDEN_BUILDING_FILTER,
 } from "@/lib/map/buildingVisibility";
 
 import {
@@ -29,6 +28,17 @@ const OLD_LAYERS = [
   "coolroute-buildings-distant",
   "coolroute-buildings-distant-outline",
 ];
+
+// Missing hide_3d properties are treated as visible.
+const VISIBLE_BUILDING_FILTER = [
+  "!",
+  ["to-boolean", ["get", "hide_3d"]],
+] as maplibregl.FilterSpecification;
+const HIDDEN_FILTER = [
+  "==",
+  ["get", "__coolroute_never_visible__"],
+  true,
+] as maplibregl.FilterSpecification;
 
 interface CorridorPolygonFeature {
   type: "Feature";
@@ -135,8 +145,7 @@ function createOsmBuildingFilters(
   bearing: number,
   pitch: number,
 ) {
-  const visibleBuilding = ["!=", ["get", "hide_3d"], true];
-
+  const visibleBuilding = ["!", ["to-boolean", ["get", "hide_3d"]]];
   const pitchRadians = (Math.max(0, Math.min(85, pitch)) * Math.PI) / 180;
 
   const heightReach = [
@@ -162,22 +171,10 @@ function createOsmBuildingFilters(
 
   const isObstructing = ["all", closeEnoughToRoute, hitsCameraCorridor];
 
-  const alwaysFalse = ["==", 1, 0];
-
-  const effectiveObstruction = pitch < 1 ? alwaysFalse : isObstructing;
-
-  const nearby = [
-    "all",
-    visibleBuilding,
-    ["<=", ["distance", routeLine], BUILDING_SHADE_DISTANCE_M],
-    ["!", effectiveObstruction],
-  ];
-
-  const distant = [
-    "all",
-    visibleBuilding,
-    [">", ["distance", routeLine], BUILDING_SHADE_DISTANCE_M],
-  ];
+  const effectiveObstruction =
+    pitch < 1
+      ? ["==", ["get", "__coolroute_never_visible__"], true]
+      : isObstructing;
 
   return {
     obstructing: [
@@ -186,9 +183,17 @@ function createOsmBuildingFilters(
       effectiveObstruction,
     ] as unknown as maplibregl.FilterSpecification,
 
-    nearby: nearby as unknown as maplibregl.FilterSpecification,
+    normal: [
+      "all",
+      visibleBuilding,
+      ["!", effectiveObstruction],
+    ] as unknown as maplibregl.FilterSpecification,
 
-    distant: distant as unknown as maplibregl.FilterSpecification,
+    distant: [
+      "all",
+      visibleBuilding,
+      [">", ["distance", routeLine], BUILDING_SHADE_DISTANCE_M],
+    ] as unknown as maplibregl.FilterSpecification,
   };
 }
 
@@ -199,7 +204,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
   const selectedRoute =
     data?.find((route) => route.kind === selectedRouteKind) ?? null;
 
-  // Create the OSM extrusion layers once.
+  // Create building layers once. The base buildings areconst visibleBuilding = ["!=", ["get", "hide_3d"], true]; visible immediately.
   useEffect(() => {
     const mapInstance = map;
 
@@ -251,6 +256,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       id: string,
       color: string,
       opacity: number,
+      filter: maplibregl.FilterSpecification,
     ) {
       targetMap.addLayer(
         {
@@ -259,7 +265,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
           source: MAP_TILES_SOURCE_ID,
           "source-layer": BUILDING_SOURCE_LAYER,
           minzoom: 14,
-          filter: HIDDEN_BUILDING_FILTER,
+          filter,
           paint: {
             "fill-extrusion-color": color,
             "fill-extrusion-height": heightExpression,
@@ -272,19 +278,32 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       );
     }
 
-    // Buildings close to the selected route.
+    // Nearby buildings: always visible, including while routes load.
     addBuildingLayer(
       mapInstance,
       BUILDINGS_EXTRUSION_LAYER_ID,
       "#E5EDE5",
       0.96,
+      VISIBLE_BUILDING_FILTER,
     );
 
-    // Buildings farther away: muted green, less visually dominant.
-    addBuildingLayer(mapInstance, DISTANT_LAYER_ID, "#59675D", 0.88);
+    // Distant buildings: activated once route data is available.
+    addBuildingLayer(
+      mapInstance,
+      DISTANT_LAYER_ID,
+      "#59675D",
+      0.88,
+      HIDDEN_FILTER,
+    );
 
-    // Camera-facing buildings that visually obstruct the route.
-    addBuildingLayer(mapInstance, OBSTRUCTING_LAYER_ID, "#E5EDE5", 0.14);
+    // Obstructing buildings: translucent, with the base layer excluding them.
+    addBuildingLayer(
+      mapInstance,
+      OBSTRUCTING_LAYER_ID,
+      "#E5EDE5",
+      0.14,
+      HIDDEN_FILTER,
+    );
 
     mapInstance.addLayer(
       {
@@ -293,7 +312,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
         source: MAP_TILES_SOURCE_ID,
         "source-layer": BUILDING_SOURCE_LAYER,
         minzoom: 15,
-        filter: HIDDEN_BUILDING_FILTER,
+        filter: HIDDEN_FILTER,
         paint: {
           "line-color": "#65736A",
           "line-width": 0.45,
@@ -303,7 +322,7 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
       firstSymbolLayer,
     );
 
-    console.info("[buildings] Refined camera-aware building layers added.");
+    console.info("[buildings] OSM building layers added.");
 
     return () => {
       for (const id of [
@@ -319,9 +338,18 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
     };
   }, [map]);
 
-  // Recalculate building visibility after route or camera changes.
+  // Classify buildings after route data becomes available and after camera changes.
   useEffect(() => {
-    if (!map || !selectedRoute) return;
+    if (!map) return;
+
+    if (!selectedRoute) {
+      // Never leave all buildings hidden while routes are unavailable.
+      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, VISIBLE_BUILDING_FILTER);
+      map.setFilter(DISTANT_LAYER_ID, HIDDEN_FILTER);
+      map.setFilter(OBSTRUCTING_LAYER_ID, HIDDEN_FILTER);
+      map.setFilter(DIVIDER_LAYER_ID, HIDDEN_FILTER);
+      return;
+    }
 
     let lastCameraKey = "";
 
@@ -341,9 +369,9 @@ export function BuildingsLayer({ selectedRouteKind }: Props) {
         pitch,
       );
 
-      map.setFilter(OBSTRUCTING_LAYER_ID, filters.obstructing);
-      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.nearby);
+      map.setFilter(BUILDINGS_EXTRUSION_LAYER_ID, filters.normal);
       map.setFilter(DISTANT_LAYER_ID, filters.distant);
+      map.setFilter(OBSTRUCTING_LAYER_ID, filters.obstructing);
       map.setFilter(DIVIDER_LAYER_ID, filters.distant);
     };
 

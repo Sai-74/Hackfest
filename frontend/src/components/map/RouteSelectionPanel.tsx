@@ -1,12 +1,5 @@
 import { useState } from "react";
-import {
-  ArrowLeftRight,
-  ChevronDown,
-  ChevronUp,
-  MapPin,
-  Sun,
-} from "lucide-react";
-import { useSolarTime } from "@/features/shade/solar-time-context";
+import { ArrowLeftRight, ChevronDown, ChevronUp, MapPin } from "lucide-react";
 import { useRoutes } from "@/features/routes/useRoutes";
 import { useRouteInputs } from "@/features/routes/route-input-context";
 import { heatBandFor } from "@/features/heat/heatScale";
@@ -121,8 +114,6 @@ export function RouteSelectionPanel({
   onSelectRoute,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const { timeMinutes, setTimeMinutes, setTimeToNow } = useSolarTime();
-  const formattedTime = `${String(Math.floor(timeMinutes / 60)).padStart(2, "0")}:${String(timeMinutes % 60).padStart(2, "0")}`;
   const {
     origin,
     destination,
@@ -155,53 +146,6 @@ export function RouteSelectionPanel({
       ].join(" ")}
     >
       {/* Header */}
-      {/* Time-of-day control */}
-      <div className="mb-2 rounded-xl border border-border bg-background/70 px-3 py-2">
-        <div className="mb-1.5 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Sun className="h-3.5 w-3.5" />
-            <span className="text-[10px] font-semibold uppercase tracking-wide">
-              Time of day
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold tabular-nums text-card-foreground">
-              {formattedTime}
-            </span>
-
-            <button
-              type="button"
-              onClick={setTimeToNow}
-              className="rounded-full bg-secondary px-2.5 py-1 text-[9px] font-bold text-secondary-foreground hover:bg-primary/10"
-            >
-              NOW
-            </button>
-          </div>
-        </div>
-
-        <input
-          type="range"
-          min={0}
-          max={1439}
-          step={1}
-          value={timeMinutes}
-          onChange={(event) =>
-            setTimeMinutes(Number(event.currentTarget.value))
-          }
-          aria-label="Time of day"
-          aria-valuetext={formattedTime}
-          className="h-1.5 w-full cursor-pointer accent-primary"
-        />
-
-        <div className="mt-1 flex justify-between text-[9px] tabular-nums text-muted-foreground">
-          <span>00:00</span>
-          <span>06:00</span>
-          <span>12:00</span>
-          <span>18:00</span>
-          <span>24:00</span>
-        </div>
-      </div>
       <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <div className="min-w-0">
           <p className="text-sm font-bold text-card-foreground">
