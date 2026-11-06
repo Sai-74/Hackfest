@@ -48,7 +48,7 @@ export function SolarShadowsLayer() {
     async function loadBuildingData() {
       try {
         const response = await fetch(
-          `${import.meta.env.BASE_URL}data/buildings-wgs84.geojson`,
+          `${import.meta.env.BASE_URL}data/campus-buildings-optimized.geojson`,
           { signal: controller.signal },
         );
 

@@ -5,7 +5,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 
 WALK_GRAPHML_PATH = os.path.join(DATA_DIR, "ravenshaw_walk.graphml")
 BIKE_GRAPHML_PATH = os.path.join(DATA_DIR, "ravenshaw_bike.graphml")
-BUILDINGS_PATH = os.path.join(DATA_DIR, "buildings.geojson")
+BUILDINGS_PATH = os.path.join(DATA_DIR, "campus-buildings-optimized.geojson")
 UTCI_RASTER_PATH = os.path.join(DATA_DIR, "utci_day_mean.tif")
 
 # Campus reference point (Ravenshaw University main campus)
@@ -24,4 +24,3 @@ DEFAULT_HEAT_SOURCE = os.getenv("COOLROUTE_HEAT_SOURCE", "utci")
 
 # Max allowable snapping distance from campus network in meters
 MAX_SNAP_DISTANCE_M = 1500.0
-
