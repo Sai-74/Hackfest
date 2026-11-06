@@ -149,7 +149,7 @@ export function getTreeShadowSegments(
         displacement.eastM,
         displacement.northM,
       ),
-      radiusM: tree.canopyRadiusM * 0.65,
+      radiusM: tree.canopyRadiusM,
     };
   });
 }
@@ -170,7 +170,7 @@ function createTreeShadowRing(
 ): LonLat[] {
   const start: XY = [0, 0];
   const end: XY = [displacement.eastM, displacement.northM];
-  const radius = tree.canopyRadiusM * 0.65;
+  const radius = tree.canopyRadiusM;
   const direction = Math.atan2(end[1] - start[1], end[0] - start[0]);
   const steps = 10;
   const points: XY[] = [];
