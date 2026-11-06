@@ -1,0 +1,27 @@
+{
+"type": "FeatureCollection",
+"name": "ravenshaw_nodes",
+"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:OGC:1.3:CRS84" } },
+"features": [
+{ "type": "Feature", "properties": { "osmid": 3297684827, "y": 20.460181, "x": 85.8956109, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8956109, 20.460181 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684883, "y": 20.4616829, "x": 85.8966323, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8966323, 20.4616829 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684913, "y": 20.4631348, "x": 85.8966018, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8966018, 20.4631348 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684925, "y": 20.4636493, "x": 85.8936556, "street_count": 4 }, "geometry": { "type": "Point", "coordinates": [ 85.8936556, 20.4636493 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684926, "y": 20.4637151, "x": 85.8966156, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8966156, 20.4637151 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684965, "y": 20.4659603, "x": 85.8956964, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8956964, 20.4659603 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684968, "y": 20.4659686, "x": 85.894431, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.894431, 20.4659686 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684979, "y": 20.466355, "x": 85.8944716, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8944716, 20.466355 ] } },
+{ "type": "Feature", "properties": { "osmid": 3297684980, "y": 20.4663449, "x": 85.895013, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.895013, 20.4663449 ] } },
+{ "type": "Feature", "properties": { "osmid": 9166327914, "y": 20.4630829, "x": 85.8937362, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8937362, 20.4630829 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531321, "y": 20.4616844, "x": 85.8972146, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8972146, 20.4616844 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531322, "y": 20.462252, "x": 85.8972472, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8972472, 20.462252 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531323, "y": 20.4624119, "x": 85.8978651, "street_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 85.8978651, 20.4624119 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531325, "y": 20.4628004, "x": 85.8977391, "street_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 85.8977391, 20.4628004 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531326, "y": 20.4636332, "x": 85.8928195, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8928195, 20.4636332 ] } },
+{ "type": "Feature", "properties": { "osmid": 9326531328, "y": 20.4628729, "x": 85.8925246, "street_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 85.8925246, 20.4628729 ] } },
+{ "type": "Feature", "properties": { "osmid": 9358443291, "y": 20.4616359, "x": 85.8980735, "street_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 85.8980735, 20.4616359 ] } },
+{ "type": "Feature", "properties": { "osmid": 10142206431, "y": 20.4605552, "x": 85.8959787, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8959787, 20.4605552 ] } },
+{ "type": "Feature", "properties": { "osmid": 10142206434, "y": 20.4601557, "x": 85.8955215, "street_count": 3 }, "geometry": { "type": "Point", "coordinates": [ 85.8955215, 20.4601557 ] } },
+{ "type": "Feature", "properties": { "osmid": 10142206437, "y": 20.4593025, "x": 85.8951155, "street_count": 1 }, "geometry": { "type": "Point", "coordinates": [ 85.8951155, 20.4593025 ] } }
+]
+}
