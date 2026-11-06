@@ -1,142 +1,124 @@
-# CoolRoute — Heat-Aware Campus Router (Ravenshaw University Pilot)
+# CoolRoute 🚶☀️🌳
 
-CoolRoute is a mobile-friendly, thermal-aware walking route navigation application built for the **Ravenshaw University main campus pilot in Cuttack, Odisha, India**.
+> **A heat-aware walking route planner for Ravenshaw University, Cuttack.**
 
-It enables campus pedestrians to calculate and compare:
-1. **Fastest Route** — minimizes estimated walking travel time.
-2. **Cooler Route** — balances travel time against heat and solar exposure using 3D building shadow simulations and calibrated daytime UTCI (Universal Thermal Climate Index) rasters.
+During hot daylight hours in Cuttack, walking through sun-exposed campus concrete can quickly lead to thermal discomfort and heat stress. Traditional navigation apps optimize strictly for distance or time, guiding pedestrians down the hottest, most unshaded paths. 
 
----
-
-## Architecture Overview
-
-- **Frontend**: React 19 + TypeScript + Vite + MapLibre GL + Tailwind CSS.
-  - Interactive map centered on Ravenshaw University main campus.
-  - **Real-Time Sun Positioning**: Dynamic solar elevation and azimuth modeling for campus coordinates ($20.462886^\circ\text{ N}, 85.895947^\circ\text{ E}$).
-  - **Interactive Time-of-Day Slider**: 24-hour sun position control (`00:00` to `24:00`) with instant "NOW" button.
-  - **Dynamic Solar Shadows**: Browser-side vector projection of building and tree shadows with soft feathered edges (`SolarShadowsLayer`).
-  - **Low-Poly 3D Trees & Ground Shade**: Extruded tree models with dual blurred map-aligned ground shade patches (`TreeShadeLayer`).
-  - **Directional Camera Occlusion**: Camera-facing occlusion corridors that automatically dim obstructing buildings (`BuildingsLayer`).
-  - **Route Selection & Comparison**: Side-by-side Fastest vs Cooler comparison cards with distance, travel time, and length-weighted heat/shade statistics.
-- **Backend**: FastAPI + NetworkX + OSMnx + GeoPandas + Shapely + Astral + Rasterio.
-  - NetworkX Dijkstra shortest-path routing with non-negative edge weights.
-  - Parallel edge resolution on OSMnx `MultiDiGraph`.
-  - In-memory graph caching on startup for sub-10ms response times.
-  - Dual endpoint support: `POST /api/routes` and `POST /api/route`.
-- **Geospatial Pipeline**:
-  - Metric coordinate system: `EPSG:32645` (WGS 84 / UTM zone 45N).
-  - Web map interface: `EPSG:4326` (WGS 84 longitude/latitude).
-  - Continuous length-weighted sampling of SOLWEIG daytime UTCI raster along edge geometries.
+**CoolRoute** solves this by calculating and comparing two route alternatives side-by-side: the **Fastest route** (minimizing walking time) and the **Cooler route** (prioritizing building shadows, tree canopy, and reduced thermal radiation).
 
 ---
 
-## Data Files in `data/`
+## ✨ Features
 
-All datasets cover the Ravenshaw University campus study area in Cuttack:
-
-| File | Type & CRS | Description |
-|---|---|---|
-| `data/buildings.geojson` | Vector (`EPSG:32645`) | 5,240 building footprints with verified `DN` attribute representing building height in metres. |
-| `data/campus-buildings-optimized.geojson` | GeoJSON (`EPSG:4326`) | 397 campus building footprints with verified metric height (`height_m`). |
-| `data/ravenshaw_building_dsm.tif` | Raster (`EPSG:32645`) | 4-metre resolution digital surface model (building heights from 0m to 20.55m). |
-| `data/utci_day_mean.tif` | Raster (`EPSG:32645`) | Calibrated SOLWEIG daytime mean UTCI raster (ranging from 41.64°C to 45.26°C). |
-| `data/tmrt_day_mean.tif` | Raster (`EPSG:32645`) | Mean radiant temperature raster in degrees Celsius. |
-| `data/ravenshaw_walk.graphml` | GraphML | Enriched pedestrian network (137 nodes, 310 edges) with shade fractions and UTCI scores. |
-| `data/ravenshaw_bike.graphml` | GraphML | Enriched cycling network (137 nodes, 310 edges). |
-| `data/ravenshaw_walk_edges.geojson` | GeoJSON (`EPSG:4326`) | Exported pedestrian edges with metric attributes. |
+- **Route Comparison**: Compare travel time, distance, and relative heat score between the Fastest and Cooler walking paths.
+- **Interactive Campus 3D Map**: Built on MapLibre GL with fluid camera rotation, tilt, and directional building occlusion.
+- **Dynamic Solar Shadows**: Client-side solar trigonometry calculating real-time building and tree shadows using local sun elevation and azimuth.
+- **Time-of-Day Slider**: Slide through 24 hours to preview shifting shade patterns across campus, with an instant "NOW" button.
+- **Thermal Heat Scoring**: Edge-by-edge heat weighting powered by daytime mean UTCI (*Universal Thermal Climate Index*) and canopy shade.
+- **Demo Route Presets**: Instant one-click campus routes for immediate presentation without manual coordinate entry.
 
 ---
 
-## Setup and Run Guide (Windows PowerShell)
+## 📸 Screenshots
+
+| Route Comparison & Insights | Real-Time Sun & Shadow Simulation |
+|:---:|:---:|
+| *(Select between Fastest and Recommended Cooler paths)* | *(Dynamic building shadows and ground tree shade)* |
+
+> *Tip: Run the application locally to interact with the live 3D map and solar time controls.*
+
+---
+
+## 🛠️ How It Works
+
+CoolRoute combines a responsive React frontend with a high-performance Python geospatial routing engine:
+
+1. **Frontend**: React 19, TypeScript, and Vite drive the interface. Vector map layers render building footprints, 3D trees, and animated route chevrons using MapLibre GL.
+2. **Backend**: A lightweight FastAPI server caches the Ravenshaw campus pedestrian graph (`MultiDiGraph`) in memory and resolves Dijkstra shortest-path queries in under 10 milliseconds.
+3. **Heat-Aware Routing**:
+   - **Fastest Objective**: Minimizes travel time based on edge length at a standard walking speed of 1.4 m/s.
+   - **Cooler Objective**: Applies a thermal penalty multiplier:
+     $$\text{cost} = \text{travel\_time} \times (1 + \text{heat\_weight} \times \text{heat\_score})$$
+4. **Data Clarification (Precomputed Heat vs. Dynamic Shadows)**:
+   - **Routing Layer**: Edge heat scores are precomputed from a calibrated **SOLWEIG daytime mean UTCI raster** (`utci_day_mean.tif`, 41.6°C–45.3°C). Routing reflects length-weighted thermal stress across daytime conditions.
+   - **Visual Layer**: The interactive time-of-day slider drives visual vector shadow polygons dynamically in the browser using exact solar coordinates for Cuttack (20.463° N, 85.894° E).
+
+---
+
+## 💻 Tech Stack
+
+- **Frontend**: React 19, TypeScript, Vite, MapLibre GL, TanStack React Query, Tailwind CSS, Lucide Icons.
+- **Backend**: Python 3.10+, FastAPI, Uvicorn, NetworkX, OSMnx, Shapely, GeoPandas, Rasterio, Astral, PyTest.
+- **Geodata**: EPSG:32645 (UTM Zone 45N) for metric analysis; EPSG:4326 (WGS84) for web mapping.
+
+---
+
+## 🚀 Run Locally
 
 ### Prerequisites
-- Python 3.10+ (or Python managed via `uv`)
+- Python 3.10+ (virtual environment recommended)
 - Node.js 20+ and npm
 
----
-
-### Step 1: Backend Setup and Run
-
-Open Windows PowerShell in the project root:
+### 1. Start Backend Server
+In Windows PowerShell (project root):
 
 ```powershell
-# 1. Activate virtual environment
+# Activate virtual environment
 .\backend\.venv\Scripts\Activate.ps1
 
-# 2. Run backend tests
+# Run tests
 python -m pytest backend/tests -v
 
-# 3. Start the FastAPI backend server
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+# Start FastAPI server (runs on http://127.0.0.1:8000)
+uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-The backend API will be available at `http://127.0.0.1:8000`.
-- API Health check: `http://127.0.0.1:8000/api/health`
-- Interactive Swagger docs: `http://127.0.0.1:8000/docs`
+*Interactive API documentation is available at `http://127.0.0.1:8000/docs`.*
 
----
-
-### Step 2: Frontend Setup and Run
-
-In a separate Windows PowerShell window, navigate to `frontend/`:
+### 2. Start Frontend App
+In a second PowerShell window:
 
 ```powershell
 cd frontend
 
-# 1. Install npm dependencies
+# Install dependencies (first time only)
 npm install
 
-# 2. Build production bundle to verify types and compilation
-npm run build
-
-# 3. Start the Vite development server
+# Start Vite dev server (runs on http://localhost:5173)
 npm run dev
 ```
 
-Open your browser to `http://localhost:5173`.
+Open `http://localhost:5173` in any desktop or mobile browser.
 
 ---
 
-## Routing Cost Functions
+## 📁 Project Structure
 
-- **Travel Time**:
-  $$\text{travel\_time\_seconds} = \frac{\text{edge\_length\_metres}}{\text{assumed\_walking\_speed}}$$
-  - Walking default: $1.4\text{ m/s}$ ($5.04\text{ km/h}$)
-
-- **Fastest Route Objective**:
-  $$\text{cost}_{\text{fastest}} = \text{travel\_time\_seconds}$$
-
-- **Cooler Route Objective**:
-  $$\text{cost}_{\text{cooler}} = \text{travel\_time\_seconds} \times (1 + \text{heat\_weight} \times \text{heat\_score})$$
-  - Default $\text{heat\_weight} = 1.0$ (configurable in `backend/app/config.py`).
-  - $\text{heat\_score} \in [0, 1]$:
-    - Active source (UTCI): normalized relative daytime thermal heat distribution across campus edges.
-    - Fallback source (Shadow): relative solar exposure score ($1 - \text{avg\_shade\_fraction}$).
-
----
-
-## API Endpoints
-
-### 1. `GET /api/health`
-Returns backend readiness, loaded graph statistics, and active heat source.
-
-### 2. `POST /api/routes` (and alias `POST /api/route`)
-Calculates fastest and cooler routes between two coordinates.
-
-Request:
-```json
-{
-  "origin": [85.8940, 20.4630],
-  "destination": [85.8970, 20.4600],
-  "profile": "walking",
-  "alternatives": ["fastest", "weighted"]
-}
+```text
+Hackfest-main/
+├── backend/
+│   ├── app/
+│   │   ├── main.py              # FastAPI endpoints (/api/routes, /api/health)
+│   │   ├── routing.py           # Dijkstra pathfinding & metric aggregation
+│   │   ├── graph_loader.py      # Spatial indexing & GraphML loader
+│   │   └── models.py            # Pydantic schemas for request/response
+│   └── tests/
+│       └── test_routing.py      # Automated API & routing tests
+├── frontend/
+│   ├── src/
+│   │   ├── components/map/      # MapLibre layers, Shadows, & Solar controls
+│   │   ├── features/routes/     # Routing state, context, & UI panels
+│   │   └── services/            # Backend API client & schema validator
+│   └── public/data/             # Web-optimized campus buildings & network
+├── data/                        # Campus GraphML, building DSM, & UTCI rasters
+└── scripts/
+    ├── calculate_edge_heat.py   # Preprocessing: building shadows & UTCI sampling
+    └── compute_shadows.py       # Standalone shadow testing utility
 ```
 
-Response includes:
-- `routes`: Array containing both `fastest` and `weighted` (cooler) route options, each with `geometry`, `segments`, and `summary`.
-- `fastest`: GeoJSON LineString geometry and stats (distance in meters, duration in minutes, average heat score, average UTCI in °C, modeled shade percentage).
-- `cooler`: GeoJSON LineString geometry and stats.
-- `heat_source`: Explicit metric identifier (`"utci"` or `"shadow"`).
-- `heat_source_description`: Human-readable explanation.
-- `snapped_start` & `snapped_end`: Coordinates snapped to the campus road network.
+---
+
+## 📚 Acknowledgements & Data
+
+- **OpenStreetMap Contributors**: Base street network and campus boundary geometries.
+- **SOLWEIG Solar & Heat Model**: Calibrated 4m Digital Surface Model (`ravenshaw_building_dsm.tif`) and daytime mean UTCI thermal raster (`utci_day_mean.tif`) covering the Ravenshaw University campus study area.

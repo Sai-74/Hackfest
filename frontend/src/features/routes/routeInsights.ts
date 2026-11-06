@@ -4,7 +4,6 @@ import { buildLineIndex } from "@/lib/map/lineMath";
 import { HEAT_BANDS, heatBandFor } from "@/features/heat/heatScale";
 import { treeShadeCoverageAt } from "@/features/shade/treeShade";
 import { DEMO_WATER_POINTS } from "@/services/mock/demoWater";
-import { type typeOf } from "maplibre-gl";
 
 const SHADE_SAMPLE_STEP_M = 4;
 const WATER_NEARBY_THRESHOLD_M = 60;
