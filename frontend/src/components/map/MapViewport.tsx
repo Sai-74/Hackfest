@@ -29,6 +29,10 @@ export function MapViewport({ children }: { children?: ReactNode }) {
       maxTileCacheSize: 64,
       maxTileCacheZoomLevels: 2,
       attributionControl: { compact: true },
+      pixelRatio: Math.min(
+        window.devicePixelRatio || 1,
+        window.matchMedia("(max-width: 768px)").matches ? 1.5 : 2,
+      ),
     });
 
     instance.addControl(

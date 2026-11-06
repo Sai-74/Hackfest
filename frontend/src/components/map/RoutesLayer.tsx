@@ -17,10 +17,10 @@ import type { RouteOption, RouteKind } from "@/types/routes";
 import { useRouteInputs } from "@/features/routes/route-input-context";
 
 const CHEVRON_SPACING_PX = 22;
-const CHEVRON_SAMPLE_STEP_M = 0.5;
+const CHEVRON_SAMPLE_STEP_M = 2;
 const PULSE_CYCLE_MS = 1850;
 const PULSE_RADIUS_PX = 48;
-const PULSE_FRAME_MS = 16;
+const PULSE_FRAME_MS = 33;
 const CHEVRON_IMAGE_ID = "coolroute-chevron";
 
 const EMPTY_FC = { type: "FeatureCollection", features: [] } as const;

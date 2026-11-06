@@ -17,4 +17,8 @@ export default defineConfig({
   optimizeDeps: {
     exclude: ["maplibre-gl"],
   },
+  server: {
+    host: "0.0.0.0",
+    allowedHosts: [".trycloudflare.com"],
+  },
 });
