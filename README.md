@@ -104,10 +104,10 @@ Open your browser to `http://localhost:5173`.
   - Walking default: $1.4\text{ m/s}$ ($5.04\text{ km/h}$)
 
 - **Fastest Route Objective**:
-  $$\text{cost}_{\text{fastest}} = \text{travel\_time\_seconds}$$
+  $$\text{cost}\_{\text{fastest}} = \text{travel\_time\_seconds}$$
 
 - **Cooler Route Objective**:
-  $$\text{cost}_{\text{cooler}} = \text{travel\_time\_seconds} \times (1 + \text{heat\_weight} \times \text{heat\_score})$$
+  $$\text{cost}\_{\text{cooler}} = \text{travel\_time\_seconds} \times (1 + \text{heat\_weight} \times \text{heat\_score})$$
   - Default $\text{heat\_weight} = 1.0$ (configurable in `backend/app/config.py`).
   - $\text{heat\_score} \in [0, 1]$:
     - Active source (UTCI): normalized relative daytime thermal heat distribution across campus edges.
