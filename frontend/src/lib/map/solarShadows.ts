@@ -312,11 +312,13 @@ export function createSolarShadowCollection(
   // Campus building shadows.
   if (buildings) {
     buildings.features.forEach((building, buildingIndex) => {
-      const rawHeight = Number(building.properties?.height_m);
+      const rawHeight = Number(
+        building.properties?.DN ?? building.properties?.height_m,
+      );
       const height =
         Number.isFinite(rawHeight) && rawHeight > 0
-          ? Math.min(rawHeight, 35)
-          : 5;
+          ? Math.min(rawHeight, 21)
+          : 4;
 
       const displacement = getShadowDisplacement(height, sun);
 
@@ -338,7 +340,7 @@ export function createSolarShadowCollection(
           id: `building-shadow-${buildingIndex}-${polygonIndex}`,
           properties: {
             kind: "building",
-            opacity: 0.15,
+            opacity: 0.035,
           },
           geometry: {
             type: "Polygon",
