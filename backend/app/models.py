@@ -1,6 +1,26 @@
 from typing import Literal, Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+
+class TreeShadowInput(BaseModel):
+    position: List[float] = Field(
+        ...,
+        min_length=2,
+        max_length=2,
+        description="Tree position as [longitude, latitude]",
+    )
+    height_m: float = Field(gt=0, le=30)
+    shade_radius_m: float = Field(gt=0, le=25)
+
+    @field_validator("position")
+    @classmethod
+    def validate_position(cls, v: List[float]) -> List[float]:
+        lon, lat = v
+        if not (-180 <= lon <= 180 and -90 <= lat <= 90):
+            raise ValueError("Invalid tree coordinates")
+        return v
+
+
 class RouteRequest(BaseModel):
     start: List[float] = Field(
         ...,
@@ -26,6 +46,17 @@ class RouteRequest(BaseModel):
         default=None,
         description="Heat metric source: 'utci' or 'shadow'"
     )
+    solar_time_minutes: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=1439,
+        description="Selected local time as minutes after midnight",
+    )
+    trees: List[TreeShadowInput] = Field(
+        default_factory=list,
+        max_length=150,
+        description="Demo tree positions used for time-specific shadows",
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -40,7 +71,8 @@ class RouteRequest(BaseModel):
             # Normalize profile -> mode
             if "mode" not in data and "profile" in data:
                 p = str(data["profile"]).lower()
-                data["mode"] = "bike" if ("bike" in p or "cycl" in p) else "walk"
+                data["mode"] = "bike" if (
+                    "bike" in p or "cycl" in p) else "walk"
         return data
 
     @field_validator("start", "end")
@@ -53,6 +85,7 @@ class RouteRequest(BaseModel):
             raise ValueError(f"Latitude {lat} out of range [-90, 90]")
         return v
 
+
 class RouteStats(BaseModel):
     distance_m: float
     duration_min: float
@@ -62,14 +95,17 @@ class RouteStats(BaseModel):
     heat_source: str
     heat_source_label: str
 
+
 class GeoJSONLineString(BaseModel):
     type: Literal["LineString"] = "LineString"
     coordinates: List[List[float]]
+
 
 class FrontendRouteSegment(BaseModel):
     startDist: float
     endDist: float
     score: float
+
 
 class FrontendRouteSummary(BaseModel):
     distanceM: float
@@ -80,6 +116,7 @@ class FrontendRouteSummary(BaseModel):
     heatSource: Optional[str] = None
     heatSourceLabel: Optional[str] = None
 
+
 class FrontendRouteOption(BaseModel):
     id: str
     kind: Literal["fastest", "weighted"]
@@ -87,11 +124,13 @@ class FrontendRouteOption(BaseModel):
     segments: List[FrontendRouteSegment]
     summary: FrontendRouteSummary
 
+
 class RouteOption(BaseModel):
     type: Literal["fastest", "cooler"]
     name: str
     geometry: GeoJSONLineString
     stats: RouteStats
+
 
 class RouteResponse(BaseModel):
     routes: List[FrontendRouteOption] = Field(default_factory=list)
@@ -102,6 +141,7 @@ class RouteResponse(BaseModel):
     heat_source_description: str
     snapped_start: List[float]
     snapped_end: List[float]
+
 
 class HealthResponse(BaseModel):
     status: str

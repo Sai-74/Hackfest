@@ -14,6 +14,8 @@ from .models import (
     FrontendRouteSegment,
     FrontendRouteSummary,
 )
+from .shadows import calculate_edge_shadow_metrics
+
 
 def get_heat_score(edge_data: Dict[str, Any], heat_source: str) -> float:
     """
@@ -26,8 +28,10 @@ def get_heat_score(edge_data: Dict[str, Any], heat_source: str) -> float:
     # Default / fallback to sun exposure score
     return float(edge_data.get("sun_exposure_score", 0.5))
 
+
 def get_edge_fastest_cost(edge_data: Dict[str, Any]) -> float:
     return float(edge_data.get("travel_time_sec", 1.0))
+
 
 def get_edge_cooler_cost(edge_data: Dict[str, Any], heat_weight: float, heat_source: str) -> float:
     time_sec = float(edge_data.get("travel_time_sec", 1.0))
@@ -36,16 +40,20 @@ def get_edge_cooler_cost(edge_data: Dict[str, Any], heat_weight: float, heat_sou
     h = max(0.0, min(1.0, h))
     return time_sec * (1.0 + heat_weight * h)
 
+
 def find_best_edge_key(G: nx.MultiDiGraph, u: int, v: int, objective: str, heat_weight: float, heat_source: str) -> Tuple[int, Dict[str, Any]]:
     """
     Selects the specific key for parallel edges between u and v that minimizes the chosen objective.
     """
     edges = G[u][v]
     if objective == "fastest":
-        best_k = min(edges.keys(), key=lambda k: get_edge_fastest_cost(edges[k]))
+        best_k = min(
+            edges.keys(), key=lambda k: get_edge_fastest_cost(edges[k]))
     else:
-        best_k = min(edges.keys(), key=lambda k: get_edge_cooler_cost(edges[k], heat_weight, heat_source))
+        best_k = min(edges.keys(), key=lambda k: get_edge_cooler_cost(
+            edges[k], heat_weight, heat_source))
     return best_k, edges[best_k]
+
 
 def compute_single_route(
     G: nx.MultiDiGraph,
@@ -66,14 +74,17 @@ def compute_single_route(
             return min(get_edge_cooler_cost(d, heat_weight, heat_source) for d in multiedges.values())
 
     try:
-        node_path = nx.shortest_path(G, source=source, target=target, weight=multi_weight, method="dijkstra")
+        node_path = nx.shortest_path(
+            G, source=source, target=target, weight=multi_weight, method="dijkstra")
     except nx.NetworkXNoPath:
         raise HTTPException(
             status_code=404,
-            detail=f"No route found between selected points for objective '{objective}'. Nodes may be in disconnected network components."
+            detail=f"No route found between selected points for objective '{
+                objective}'. Nodes may be in disconnected network components."
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Routing calculation failed: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Routing calculation failed: {str(e)}")
 
     if len(node_path) < 2:
         # Same start and end node
@@ -82,7 +93,8 @@ def compute_single_route(
         return RouteOption(
             type=objective,
             name="Fastest Route" if objective == "fastest" else "Cooler Route",
-            geometry=GeoJSONLineString(type="LineString", coordinates=[[lon, lat], [lon, lat]]),
+            geometry=GeoJSONLineString(type="LineString", coordinates=[
+                                       [lon, lat], [lon, lat]]),
             stats=RouteStats(
                 distance_m=1.0,
                 duration_min=0.01,
@@ -106,7 +118,8 @@ def compute_single_route(
     for i in range(len(node_path) - 1):
         u = node_path[i]
         v = node_path[i + 1]
-        k, edge_data = find_best_edge_key(G, u, v, objective, heat_weight, heat_source)
+        k, edge_data = find_best_edge_key(
+            G, u, v, objective, heat_weight, heat_source)
 
         length = float(edge_data.get("length", 1.0))
         time_sec = float(edge_data.get("travel_time_sec", 1.0))
@@ -130,16 +143,20 @@ def compute_single_route(
             u_node = G.nodes[u]
             u_xy = (float(u_node["x"]), float(u_node["y"]))
             # Check orientation
-            start_dist = (edge_coords[0][0] - u_xy[0]) ** 2 + (edge_coords[0][1] - u_xy[1]) ** 2
-            end_dist = (edge_coords[-1][0] - u_xy[0]) ** 2 + (edge_coords[-1][1] - u_xy[1]) ** 2
+            start_dist = (edge_coords[0][0] - u_xy[0]
+                          ) ** 2 + (edge_coords[0][1] - u_xy[1]) ** 2
+            end_dist = (edge_coords[-1][0] - u_xy[0]) ** 2 + \
+                (edge_coords[-1][1] - u_xy[1]) ** 2
             if end_dist < start_dist:
                 edge_coords.reverse()
 
             if not full_coords:
-                full_coords.extend([[float(pt[0]), float(pt[1])] for pt in edge_coords])
+                full_coords.extend([[float(pt[0]), float(pt[1])]
+                                   for pt in edge_coords])
             else:
                 # Omit first point to avoid duplicate vertex
-                full_coords.extend([[float(pt[0]), float(pt[1])] for pt in edge_coords[1:]])
+                full_coords.extend([[float(pt[0]), float(pt[1])]
+                                   for pt in edge_coords[1:]])
         else:
             # Fallback to straight segment between nodes
             u_pt = [float(G.nodes[u]["x"]), float(G.nodes[u]["y"])]
@@ -148,11 +165,18 @@ def compute_single_route(
                 full_coords.append(u_pt)
             full_coords.append(v_pt)
 
-    avg_heat = round(weighted_heat_sum / total_distance_m, 3) if total_distance_m > 0 else 0.0
-    avg_shade = round(weighted_shade_sum / total_distance_m, 3) if total_distance_m > 0 else 0.0
-    avg_utci = round(utci_weighted_sum / utci_len_sum, 1) if utci_len_sum > 0 else None
+    avg_heat = round(weighted_heat_sum / total_distance_m,
+                     3) if total_distance_m > 0 else 0.0
+    avg_shade = round(weighted_shade_sum / total_distance_m,
+                      3) if total_distance_m > 0 else 0.0
+    avg_utci = round(utci_weighted_sum / utci_len_sum,
+                     1) if utci_len_sum > 0 else None
 
-    heat_source_label = "UTCI-based thermal heat" if heat_source == "utci" else "Relative Sun-Exposure / Shadow"
+    heat_source_label = (
+        "UTCI-based thermal heat"
+        if heat_source == "utci"
+        else "Time-specific solar shadow exposure"
+    )
 
     return RouteOption(
         type=objective,
@@ -169,10 +193,12 @@ def compute_single_route(
         )
     )
 
+
 def to_frontend_option(route: RouteOption, kind: str) -> FrontendRouteOption:
     stats = route.stats
     dist_m = max(1.0, float(stats.distance_m))
-    score = float(round(max(0.0, min(1.0, float(stats.avg_heat_score))) * 100.0))
+    score = float(
+        round(max(0.0, min(1.0, float(stats.avg_heat_score))) * 100.0))
     dur_min = max(0.0, float(stats.duration_min))
 
     return FrontendRouteOption(
@@ -197,6 +223,7 @@ def to_frontend_option(route: RouteOption, kind: str) -> FrontendRouteOption:
         )
     )
 
+
 def calculate_routes(req: RouteRequest) -> RouteResponse:
     """
     Coordinates calculation for both Fastest and Cooler routes.
@@ -207,38 +234,72 @@ def calculate_routes(req: RouteRequest) -> RouteResponse:
     except KeyError:
         raise HTTPException(
             status_code=503,
-            detail=f"Network graph for mode '{mode}' is not loaded. Please ensure data files are generated."
+            detail=f"Network graph for mode '{
+                mode}' is not loaded. Please ensure data files are generated."
         )
 
     # Snap start and end to network
     start_lon, start_lat = req.start[0], req.start[1]
     end_lon, end_lat = req.end[0], req.end[1]
 
-    source_node, start_dist, (snapped_start_lon, snapped_start_lat) = graph_repo.find_nearest_node(mode, start_lon, start_lat)
-    target_node, end_dist, (snapped_end_lon, snapped_end_lat) = graph_repo.find_nearest_node(mode, end_lon, end_lat)
+    source_node, start_dist, (snapped_start_lon, snapped_start_lat) = graph_repo.find_nearest_node(
+        mode, start_lon, start_lat)
+    target_node, end_dist, (snapped_end_lon, snapped_end_lat) = graph_repo.find_nearest_node(
+        mode, end_lon, end_lat)
 
     if start_dist > config.MAX_SNAP_DISTANCE_M:
         raise HTTPException(
             status_code=400,
-            detail=f"Starting point is too far ({start_dist:.0f}m) from the campus network (max {config.MAX_SNAP_DISTANCE_M:.0f}m)."
+            detail=f"Starting point is too far ({start_dist:.0f}m) from the campus network (max {
+                config.MAX_SNAP_DISTANCE_M:.0f}m)."
         )
     if end_dist > config.MAX_SNAP_DISTANCE_M:
         raise HTTPException(
             status_code=400,
-            detail=f"Destination point is too far ({end_dist:.0f}m) from the campus network (max {config.MAX_SNAP_DISTANCE_M:.0f}m)."
+            detail=f"Destination point is too far ({end_dist:.0f}m) from the campus network (max {
+                config.MAX_SNAP_DISTANCE_M:.0f}m)."
         )
 
     # Determine heat source and weight
-    heat_source = req.heat_source or ("utci" if graph_repo.has_utci_data else "shadow")
-    heat_weight = req.heat_weight if (req.heat_weight is not None and req.heat_weight >= 0) else config.DEFAULT_HEAT_WEIGHT
+    # A slider-driven request uses time-specific shadow exposure by default.
+    # UTCI remains available when explicitly requested.
+    heat_source = req.heat_source or ("shadow" if req.solar_time_minutes is not None else (
+        "utci" if graph_repo.has_utci_data else "shadow"))
 
-    fastest_route = compute_single_route(G, source_node, target_node, "fastest", heat_weight, heat_source)
-    cooler_route = compute_single_route(G, source_node, target_node, "cooler", heat_weight, heat_source)
+    if heat_source == "shadow" and req.solar_time_minutes is not None:
+        # Copy the graph so simultaneous API requests cannot overwrite each
+        # other's time-dependent edge attributes.
+        G = G.copy()
+
+        try:
+            dynamic_metrics = calculate_edge_shadow_metrics(
+                G, req.solar_time_minutes, req.trees,)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Dynamic shadow calculation failed: {exc}",
+            )
+
+        for (u, v, key), (shade_fraction, exposure_score) in dynamic_metrics.items():
+            edge_data = G.edges[u, v, key]
+            edge_data["avg_shade_fraction"] = shade_fraction
+            edge_data["sun_exposure_score"] = exposure_score
+
+    heat_weight = (req.heat_weight if req.heat_weight is not None and req.heat_weight >=
+                   0 else config.DEFAULT_HEAT_WEIGHT)
+
+    fastest_route = compute_single_route(
+        G, source_node, target_node, "fastest", heat_weight, heat_source)
+    cooler_route = compute_single_route(
+        G, source_node, target_node, "cooler", heat_weight, heat_source)
 
     if heat_source == "utci":
         heat_desc = "Thermal comfort score derived from campus daytime UTCI raster (°C), normalized relative to campus conditions."
     else:
-        heat_desc = "Solar exposure score derived from 3D building shadow simulations across morning, midday, and evening."
+        heat_desc = (
+            "Time-specific solar exposure calculated from campus building "
+            "footprints and submitted tree positions for the selected local time."
+        )
 
     frontend_fastest = to_frontend_option(fastest_route, "fastest")
     frontend_cooler = to_frontend_option(cooler_route, "weighted")
@@ -253,4 +314,3 @@ def calculate_routes(req: RouteRequest) -> RouteResponse:
         snapped_start=[snapped_start_lon, snapped_start_lat],
         snapped_end=[snapped_end_lon, snapped_end_lat]
     )
-

@@ -1,12 +1,18 @@
 import { mockRouteOptions } from "@/services/mock/demoRoutes";
 import type { LonLat, RouteOption } from "@/types/routes";
-
+import { DEMO_TREES } from "@/services/mock/demoTrees";
 const USE_MOCK = import.meta.env.VITE_USE_MOCK_DATA !== "false";
 
 interface BackendRouteRequest {
   start: LonLat;
   end: LonLat;
   mode: "walk";
+  solar_time_minutes: number;
+  trees: {
+    position: LonLat;
+    height_m: number;
+    shade_radius_m: number;
+  }[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -153,6 +159,12 @@ export async function fetchRouteOptions({
     start: origin,
     end: destination,
     mode: "walk",
+    solar_time_minutes: solarTimeMinutes ?? 12 * 60,
+    trees: DEMO_TREES.map((tree) => ({
+      position: tree.position,
+      height_m: tree.heightM,
+      shade_radius_m: tree.shadeRadiusM,
+    })),
   };
 
   let response: Response;

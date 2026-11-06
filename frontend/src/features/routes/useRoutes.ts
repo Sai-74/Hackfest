@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { fetchRouteOptions } from "@/services/routes";
@@ -10,20 +11,32 @@ export function useRoutes() {
   const { origin, destination } = useRouteInputs();
   const { timeMinutes } = useSolarTime();
 
+  const [debouncedTimeMinutes, setDebouncedTimeMinutes] = useState(timeMinutes);
+
+  useEffect(() => {
+    if (USE_MOCK_DATA) {
+      setDebouncedTimeMinutes(timeMinutes);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDebouncedTimeMinutes(timeMinutes);
+    }, 400);
+
+    return () => window.clearTimeout(timeout);
+  }, [timeMinutes]);
+
+  const requestTimeMinutes = USE_MOCK_DATA ? timeMinutes : debouncedTimeMinutes;
+
   return useQuery({
-    queryKey: [
-      "route-options",
-      origin,
-      destination,
-      USE_MOCK_DATA ? timeMinutes : null,
-    ],
+    queryKey: ["route-options", origin, destination, requestTimeMinutes],
 
     queryFn: ({ signal }) =>
       fetchRouteOptions({
         origin,
         destination,
         signal,
-        solarTimeMinutes: timeMinutes,
+        solarTimeMinutes: requestTimeMinutes,
       }),
 
     staleTime: Infinity,
