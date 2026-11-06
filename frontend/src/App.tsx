@@ -1,122 +1,89 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { BuildingsLayer } from "@/components/map/BuildingsLayer";
+import { RouteLegend } from "@/components/map/RouteLegend";
+import { RoutesLayer } from "@/components/map/RoutesLayer";
+import { MapViewport } from "@/components/map/MapViewport";
+import { RoadNetworkLayer } from "@/components/map/RoadNetworkLayer";
+import { RouteWaypointsLayer } from "@/components/map/RouteWaypointsLayer";
+import { TreeShadeLayer } from "@/components/map/TreeShadeLayer";
+import { WaterPointsLayer } from "@/components/map/WaterPointsLayer";
+import { RouteSelectionPanel } from "@/components/map/RouteSelectionPanel";
+import { RouteMapPicker } from "@/components/map/RouteMapPicker";
+import {
+  RouteInputProvider,
+  useRouteInputs,
+} from "@/features/routes/route-input-context";
+import { SolarTimeControl } from "@/components/map/SolarTimeControl";
+import type { RouteKind } from "@/types/routes";
+import { SolarShadowsLayer } from "./components/map/SolarShadowsLayer";
+import { SolarTimeProvider } from "./features/shade/solar-time-context";
+import { CampusBuildingCellsLayer } from "@/components/map/CampusBuildingCellsLayer";
 
-function App() {
-  const [count, setCount] = useState(0)
+function AppContent() {
+  const [selectedRouteKind, setSelectedRouteKind] =
+    useState<RouteKind>("weighted");
+
+  const { selectionMode, setSelectionMode } = useRouteInputs();
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="flex h-dvh w-full flex-col bg-background text-foreground">
+      <main className="relative flex-1 overflow-hidden">
+        <MapViewport>
+          <BuildingsLayer selectedRouteKind={selectedRouteKind} />
+          <CampusBuildingCellsLayer selectedRouteKind={selectedRouteKind} />
+          <TreeShadeLayer />
+          <SolarShadowsLayer />
+          <RoadNetworkLayer />
+          <WaterPointsLayer />
+          <RoutesLayer selectedRouteKind={selectedRouteKind} />
+          <RouteWaypointsLayer selectedRouteKind={selectedRouteKind} />
+          <RouteMapPicker />
+        </MapViewport>
 
-      <div className="ticks"></div>
+        <SolarTimeControl />
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+        {!selectionMode && <RouteLegend />}
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {selectionMode && (
+          <div className="absolute inset-x-0 top-3 z-30 flex justify-center px-3">
+            <div className="flex items-center gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur-md">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-50" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary" />
+              </span>
+
+              <p className="text-xs font-semibold text-card-foreground">
+                Tap map to set {selectionMode}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => setSelectionMode(null)}
+                className="rounded-full bg-secondary px-2.5 py-1 text-[10px] font-semibold text-secondary-foreground hover:bg-primary/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {!selectionMode && (
+          <RouteSelectionPanel
+            selectedRouteKind={selectedRouteKind}
+            onSelectRoute={setSelectedRouteKind}
+          />
+        )}
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default function App() {
+  return (
+    <SolarTimeProvider>
+      <RouteInputProvider>
+        <AppContent />
+      </RouteInputProvider>
+    </SolarTimeProvider>
+  );
+}
